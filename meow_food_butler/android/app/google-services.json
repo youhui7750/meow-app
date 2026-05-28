@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "835884596247",
+    "project_id": "meow-food-butler",
+    "storage_bucket": "meow-food-butler.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:835884596247:android:02cce0780709e2106c3052",
+        "android_client_info": {
+          "package_name": "com.example.meow_food_butler"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAXDPolTG55LW96mAAp-ldViMKJFCuZNbE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
