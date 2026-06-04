@@ -20,6 +20,7 @@ class FoodButlerApp extends StatelessWidget {
       theme: brightness == Brightness.light ? theme.light() : theme.dark(),
       // Bind router delegates straight to your GoRouter architecture schema
       routerConfig: AppNavigation.router,
+      debugShowCheckedModeBanner: false,
     );
   }
 }
