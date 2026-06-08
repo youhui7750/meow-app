@@ -32,6 +32,13 @@ class ChatMessage {
   /// Checks if the message belongs to the current user or the active AI butler
   bool get isFromAI => senderId == 'ai_agent';
 
+  /// OpenAI-style role string ('user' / 'assistant') derived from [senderId].
+  /// Compatibility accessor for the chat UI / [ChatService].
+  String get role => isFromAI ? 'assistant' : 'user';
+
+  /// Alias for [messageText]. Compatibility accessor for the chat UI.
+  String get text => messageText;
+
   /// Helper utility to check if it contains actionable custom components
   bool get hasRecommendationStack => 
       type == ChatMessageType.recommendation && 

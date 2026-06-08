@@ -1,9 +1,15 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:meow_food_butler/firebase_options.dart';
 import 'package:meow_food_butler/services/navigation.dart'; // Import your navigation layout directly
 import 'package:meow_food_butler/theme/theme.dart';
 import 'package:meow_food_butler/utils/theme_util.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const FoodButlerApp());
 }
 

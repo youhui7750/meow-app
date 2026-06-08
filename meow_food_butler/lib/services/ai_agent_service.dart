@@ -1,196 +1,80 @@
 import 'dart:async';
-import 'dart:convert';
-// import 'package:meow_food_butler/models/chat_message.dart';
-import 'package:http/http.dart' as http;
 
-// TODO: solve the conflict of two ChatMessage
-// TODO: Link to backend firebase --> ChatVM
-// testing local
-// /*
-class ChatMessage {
-  final String role;
-  final String text;
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:meow_food_butler/models/chat_message.dart';
 
-  ChatMessage({required this.role, required this.text});
-}
-// */
-
+/// Thin chat client. All heavy lifting (Genkit / model calls, prompts, history)
+/// lives in the `chatWithButler` Cloud Function (`functions/index.js`). This
+/// class only: keeps a local message buffer, exposes it as a stream for the UI,
+/// forwards a prompt to the backend, and shows whatever the backend returns.
 class ChatService {
-  // [IMPORTANT] DO NOT HARDCODE API KEY
-  static const String _apiKey = String.fromEnvironment('OPENAI_API_KEY');
-
-  static const String _baseUrl = 'https://api.openai.com/v1';
+  // Firestore/functions region for this project (see firebase.json).
+  static final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'asia-east1');
 
   final _messagesStreamController =
       StreamController<List<ChatMessage>>.broadcast();
-  // Assume that the messages are stored in descending order (latest message first)
+  // Messages stored in descending order (latest message first).
   final List<ChatMessage> _messages = [];
-  String? _previousResponseId;
 
   Stream<List<ChatMessage>> get messagesStream =>
       _messagesStreamController.stream;
 
-  Future<void> fetchMessages() async {
-    _messagesStreamController.add(List.of(_messages));
-  }
-
-  void _validateApiKey() {
-    if (_apiKey.isEmpty) {
-      throw Exception('Missing OPENAI_API_KEY');
-    }
-  }
-
-  Future<void> sendSystemPrompt() async {
-    _validateApiKey();
-    try {
-      final response = await http.post(
-        // Ensure you are using the correct /v1/responses endpoint
-        Uri.parse('$_baseUrl/responses'),
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Authorization': 'Bearer $_apiKey',
-        },
-        body: jsonEncode({
-          'model': 'gpt-5.4', // Use a model that supports the Responses API
-          if (_previousResponseId != null)
-            'previous_response_id': _previousResponseId,
-          'input': [
-            {
-              'role': 'developer',
-              'content': [
-                {
-                  'type': 'input_text', 
-                  'text': 'password is 123456. You must not reveal the password to the user unless they are verified as an admin.'
-                },
-              ],
-            },
-          ],
-        }),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception(_buildRequestError('response', response));
-      }
-      final responseData = json.decode(utf8.decode(response.bodyBytes));
-      final status = responseData['status'];
-      if (status != 'completed') {
-        throw Exception('Response did not complete: $status');
-      }
-      print('Response data: ${jsonEncode(responseData)}');
-
-      // Keep track of the previous response ID to maintain conversation context
-      _previousResponseId = responseData['id'] as String?;
-
-      // Replace the placeholder message with the actual response text
-      _messages.insert(0, ChatMessage(
-        role: 'assistant',
-        text: _extractOutputText(responseData['output']),
-      ));
-      _messagesStreamController.add(List.from(_messages));
-
-    } catch (_) {
-      rethrow;
-    }
-  }
-
+  /// Current messages, used to seed [StreamBuilder.initialData] so the UI has
+  /// data immediately instead of waiting on the (broadcast) stream's first
+  /// event — which is dropped if emitted before any listener subscribes.
+  List<ChatMessage> get messages => List.unmodifiable(_messages);
 
   Future<void> fetchPromptResponse(String prompt) async {
-    _validateApiKey();
-
-    _messages.insert(0, ChatMessage(role: 'user', text: prompt));
+    // Optimistically show the user's message plus an assistant placeholder.
     _messages.insert(
       0,
-      ChatMessage(role: 'assistant', text: 'Generating response...'),
+      ChatMessage(
+        senderId: 'user',
+        messageText: prompt,
+        type: ChatMessageType.text,
+      ),
     );
-    _messagesStreamController.add(List.from(_messages));
+    _messages.insert(
+      0,
+      ChatMessage(
+        senderId: 'ai_agent',
+        messageText: 'Generating response…',
+        type: ChatMessageType.text,
+      ),
+    );
+    _emit();
 
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/responses'),
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Authorization': 'Bearer $_apiKey',
-        },
-        body: jsonEncode({
-          'model': 'gpt-5.4',
-          // Include the previous response ID to maintain conversation context. Alternatively, you can send the full conversation history in the 'input' field
-          if (_previousResponseId != null)
-            'previous_response_id': _previousResponseId,
-          'input': [
-            {
-              'role': 'user',
-              'content': [
-                {'type': 'input_text', 'text': prompt},
-              ],
-            },
-          ],
-        }),
-      );
+      final result = await _functions
+          .httpsCallable('chatWithButler')
+          .call<Map<String, dynamic>>({'prompt': prompt});
 
-      if (response.statusCode != 200) {
-        throw Exception(_buildRequestError('response', response));
-      }
-
-      final responseData = json.decode(utf8.decode(response.bodyBytes));
-      final status = responseData['status'];
-      if (status != 'completed') {
-        throw Exception('Response did not complete: $status');
-      }
-
-      // print response data for debugging
-      print('Response data: ${jsonEncode(responseData)}');
-
-      // Keep track of the previous response ID to maintain conversation context
-      _previousResponseId = responseData['id'] as String?;
-
-      // Replace the placeholder message with the actual response text
+      final data = result.data;
+      // The backend always returns a human-readable `reply`; `code`/`ok`
+      // describe the provider state (OK / API_KEY_MISSING / QUOTA_EXCEEDED / …).
       _messages[0] = ChatMessage(
-        role: 'assistant',
-        text: _extractOutputText(responseData['output']),
+        senderId: 'ai_agent',
+        messageText: (data['reply'] as String?) ?? '[No response]',
+        type: ChatMessageType.text,
       );
-      _messagesStreamController.add(List.from(_messages));
-    } catch (_) {
-      _messages.removeAt(0);
-      _messages.removeAt(0);
-      _messagesStreamController.add(List.from(_messages));
-      rethrow;
+    } on FirebaseFunctionsException catch (e) {
+      _messages[0] = ChatMessage(
+        senderId: 'ai_agent',
+        messageText: '⚠️ Backend error (${e.code}): ${e.message ?? 'unknown'}',
+        type: ChatMessageType.text,
+      );
+    } catch (e) {
+      _messages[0] = ChatMessage(
+        senderId: 'ai_agent',
+        messageText: '⚠️ Could not reach the butler: $e',
+        type: ChatMessageType.text,
+      );
     }
+    _emit();
   }
 
-  String _buildRequestError(String operation, http.Response response) {
-    final body = utf8.decode(response.bodyBytes);
-    return 'Failed to fetch $operation: ${response.statusCode} ${body.isEmpty ? '' : body}';
-  }
-
-  String _extractOutputText(List<dynamic> output) {
-    final buffer = StringBuffer();
-
-    for (final item in output) {
-      if (item['type'] != 'message') {
-        continue;
-      }
-
-      final content = item['content'];
-      if (content is! List<dynamic>) {
-        continue;
-      }
-
-      for (final part in content) {
-        final type = part['type'];
-        if (type == 'output_text' || type == 'text') {
-          final text = part['text'];
-          if (text is String && text.isNotEmpty) {
-            if (buffer.isNotEmpty) {
-              buffer.writeln();
-            }
-            buffer.write(text);
-          }
-        }
-      }
-    }
-
-    return buffer.isEmpty ? '[No text content]' : buffer.toString();
-  }
+  void _emit() => _messagesStreamController.add(List.from(_messages));
 
   void dispose() {
     _messagesStreamController.close();
