@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 /// Please use the command `flutter pub add google_maps_flutter`
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class MainMapScreen extends StatefulWidget {
@@ -10,13 +12,63 @@ class MainMapScreen extends StatefulWidget {
 }
 
 class _MainMapScreenState extends State<MainMapScreen> {
-  late GoogleMapController mapController;
+  GoogleMapController? mapController;
 
   // Placeholder for Taipei, Taiwan (Da'an District)
-  final LatLng _center = const LatLng(25.032969, 121.542598); 
+  static const LatLng _defaultCenter = LatLng(25.032969, 121.542598);
+  LatLng _center = _defaultCenter;
+  bool _canUseLocation = false;
+  bool _isLocating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _moveToCurrentLocation();
+  }
 
   void _onMapCreated(GoogleMapController controller) {
     mapController = controller;
+  }
+
+  Future<void> _moveToCurrentLocation() async {
+    if (_isLocating) return;
+    setState(() => _isLocating = true);
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      final target = LatLng(position.latitude, position.longitude);
+
+      if (!mounted) return;
+      setState(() {
+        _center = target;
+        _canUseLocation = true;
+      });
+
+      await mapController?.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: target, zoom: 15),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
   }
 
   @override
@@ -28,25 +80,41 @@ class _MainMapScreenState extends State<MainMapScreen> {
           // 1. The Background Google Map Layer
           GoogleMap(
             onMapCreated: _onMapCreated,
-            initialCameraPosition: CameraPosition(
-              target: _center,
-              zoom: 15.0,
+            initialCameraPosition: CameraPosition(target: _center, zoom: 15.0),
+            myLocationEnabled: _canUseLocation,
+            myLocationButtonEnabled:
+                false, // We'll build a custom FAB for this later
+            zoomControlsEnabled: false, // Keeps the UI clean
+          ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 16,
+            right: 16,
+            child: FloatingActionButton.small(
+              heroTag: 'map-current-location',
+              onPressed: _isLocating ? null : _moveToCurrentLocation,
+              child: _isLocating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location),
             ),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false, // We'll build a custom FAB for this later
-            zoomControlsEnabled: false,     // Keeps the UI clean
           ),
 
           // 2. The Draggable Bottom Sheet Layer
           DraggableScrollableSheet(
             initialChildSize: 0.3, // Starts at 30% of screen height
-            minChildSize: 0.1,     // Can be dragged down to 10% (just a top bar)
-            maxChildSize: 0.85,    // Can be dragged up to 85% to view comments/photos
+            minChildSize: 0.1, // Can be dragged down to 10% (just a top bar)
+            maxChildSize:
+                0.85, // Can be dragged up to 85% to view comments/photos
             builder: (BuildContext context, ScrollController scrollController) {
               return Container(
                 decoration: BoxDecoration(
                   color: Theme.of(context).scaffoldBackgroundColor,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.15),
@@ -56,7 +124,8 @@ class _MainMapScreenState extends State<MainMapScreen> {
                   ],
                 ),
                 child: ListView.builder(
-                  controller: scrollController, // Crucial: binds scrolling to dragging
+                  controller:
+                      scrollController, // Crucial: binds scrolling to dragging
                   itemCount: 5, // Placeholder count
                   itemBuilder: (BuildContext context, int index) {
                     // Top drag indicator handle for the first item
@@ -76,7 +145,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
                         ],
                       );
                     }
-                    
+
                     // Placeholder for your FoodCard populated by Outscraper data
                     return _buildMockFoodCard(context, index);
                   },
@@ -106,8 +175,17 @@ class _MainMapScreenState extends State<MainMapScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Ramen Spot $index', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const Icon(Icons.navigation, color: Colors.blue), // Your requested Maps nav link
+                Text(
+                  'Ramen Spot $index',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                const Icon(
+                  Icons.navigation,
+                  color: Colors.blue,
+                ), // Your requested Maps nav link
               ],
             ),
             const SizedBox(height: 8),
@@ -124,13 +202,21 @@ class _MainMapScreenState extends State<MainMapScreen> {
                     color: Colors.grey[300],
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Center(child: Icon(Icons.image, color: Colors.grey)),
+                  child: const Center(
+                    child: Icon(Icons.image, color: Colors.grey),
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 12),
             // Placeholder for Outscraper Reviews
-            Text('⭐⭐⭐⭐⭐ "Best ramen in Da\'an!"', style: TextStyle(color: Colors.grey[700], fontStyle: FontStyle.italic)),
+            Text(
+              '⭐⭐⭐⭐⭐ "Best ramen in Da\'an!"',
+              style: TextStyle(
+                color: Colors.grey[700],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
           ],
         ),
       ),
