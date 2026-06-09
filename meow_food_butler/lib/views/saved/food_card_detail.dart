@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/food_card.dart';
 import '../../models/experience_card.dart';
+import 'experience_entry_sheet.dart'; 
 
 class FoodCardDetail extends StatefulWidget {
   final FoodCard foodCard;
@@ -28,15 +29,54 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
   int _currentTabIndex = 0; // 0 = Online Info, 1 = Yours
   final TextEditingController _tagController = TextEditingController();
   
-  final List<String> _mockPros = ['環境乾淨', '出餐快', '食材新鮮', '分量足'];
-  final List<String> _mockCons = ['不好停車', '排隊久'];
-  
-  final List<String> _suggestedTags = ['口袋名單', '週末愛店', '平價美食', '適合聚餐', '高CP值'];
+  final List<String> _mockPros = ['Clean', 'Fast service', 'Fresh food', 'Large portions'];
+  final List<String> _mockCons = ['Hard to park', 'Long queue'];
+  final List<String> _suggestedTags = ['Go-to spot', 'Weekend vibe', 'Cheap eats', 'Group friendly', 'Great value'];
 
   @override
   void dispose() {
     _tagController.dispose();
     super.dispose();
+  }
+
+  void _openExperienceEntrySheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, 
+      useSafeArea: true,        
+      backgroundColor: Colors.transparent, 
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: ExperienceEntrySheet(
+            initialExperience: ExperienceCard(
+              foodCardId: widget.foodCard.id,
+              placeTitle: widget.foodCard.primaryTitle,
+              placeAddress: widget.foodCard.formattedAddress,
+              latitude: widget.foodCard.location?.latitude,
+              longitude: widget.foodCard.location?.longitude,
+              personalTags: const [],
+              personalRating: 0.0,
+            ),
+            onSave: (newExperience, photos) async {
+              debugPrint('Preparing to save new experience: ${newExperience.placeTitle}');
+              debugPrint('Selected ${photos.length} photos');
+              
+              // Simulate network delay
+              await Future.delayed(const Duration(seconds: 1));
+              
+              if (context.mounted) {
+                Navigator.of(context).pop();
+                widget.onAddExperience(); 
+              }
+            },
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -48,11 +88,8 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
           Column(
             children: [
               _buildHeroImage(),
-              
               _buildHeader(),
-              
               _buildTabs(),
-              
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 100),
@@ -66,7 +103,6 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
               ),
             ],
           ),
-          
           _buildBottomActionBar(),
         ],
       ),
@@ -137,10 +173,10 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Text("附近 • ", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const Text("Nearby • ", style: TextStyle(fontSize: 12, color: Colors.grey)),
                     Icon(Icons.phone, size: 12, color: Colors.grey[600]),
                     const SizedBox(width: 4),
-                    Text("暫無電話", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    Text("No phone available", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                   ],
                 ),
               ],
@@ -183,8 +219,8 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
         ),
         child: Row(
           children: [
-            Expanded(child: _buildTabButton("線上資訊", 0)),
-            Expanded(child: _buildTabButton("我的評分", 1)),
+            Expanded(child: _buildTabButton("Online Info", 0)),
+            Expanded(child: _buildTabButton("My Rating", 1)),
           ],
         ),
       ),
@@ -226,7 +262,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(6)),
-              child: const Text("美食餐廳", style: TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w500)),
+              child: const Text("Restaurant", style: TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w500)),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -261,7 +297,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                widget.foodCard.formattedAddress ?? "這是一間位於大安區的高人氣美食餐廳，店內提供多樣化的特色料理，非常推薦前往品嚐。",
+                widget.foodCard.formattedAddress ?? "This is a highly popular restaurant offering a variety of specialty dishes. Highly recommended.",
                 style: TextStyle(fontSize: 14, color: Colors.grey[700], height: 1.5),
               ),
             ),
@@ -306,14 +342,14 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("你的平均評分", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)),
+              const Text("YOUR AVERAGE", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)),
               visitCount > 0 ? Row(
                 children: [
                   Text(avgRating.toStringAsFixed(1), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.deepOrange)),
                   const SizedBox(width: 8),
-                  Text("$visitCount 次造訪記錄", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange)),
+                  Text("$visitCount visits", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange)),
                 ],
-              ) : const Text("尚未寫過用餐體驗", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey)),
+              ) : const Text("No ratings yet", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey)),
             ],
           ),
         ),
@@ -321,9 +357,9 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("我的用餐紀錄", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const Text("YOUR MEALS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
             GestureDetector(
-              onTap: widget.onAddExperience,
+              onTap: _openExperienceEntrySheet, 
               child: Container(
                 width: 32, height: 32,
                 decoration: const BoxDecoration(color: Colors.deepOrange, shape: BoxShape.circle),
@@ -335,7 +371,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
         const SizedBox(height: 12),
         if (visitCount == 0)
           GestureDetector(
-            onTap: widget.onAddExperience,
+            onTap: _openExperienceEntrySheet, 
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
@@ -347,8 +383,8 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
                 children: [
                   Icon(Icons.add_circle_outline, size: 28, color: Colors.deepOrange),
                   const SizedBox(height: 8),
-                  Text("新增你的第一筆體驗", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                  Text("記錄下你在這裡吃過的菜色與心得吧！", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text("Log your first meal", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  Text("Record the dishes you tried and your thoughts!", style: TextStyle(fontSize: 12, color: Colors.grey)),
                 ],
               ),
             ),
@@ -356,7 +392,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
         else
           ...widget.experiences.map((exp) => _buildExperienceItem(exp)),
         const SizedBox(height: 24),
-        const Text("自訂美食標籤", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+        const Text("YOUR TAGS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -372,7 +408,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
               Expanded(
                 child: TextField(
                   controller: _tagController,
-                  decoration: const InputDecoration(border: InputBorder.none, hintText: "建立新標籤", hintStyle: TextStyle(fontSize: 13)),
+                  decoration: const InputDecoration(border: InputBorder.none, hintText: "Add your own tag", hintStyle: TextStyle(fontSize: 13)),
                   onSubmitted: (val) => _handleAddNewTag(),
                 ),
               ),
@@ -460,9 +496,11 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
 
   String _formatRelative(DateTime date) {
     final diff = DateTime.now().difference(date);
-    if (diff.inMinutes < 60) return "剛剛";
-    if (diff.inHours < 24) return "${diff.inHours}小時前";
-    return "${diff.inDays}天前";
+    if (diff.inMinutes < 60) return "Just now";
+    if (diff.inHours == 1) return "1 hr ago";
+    if (diff.inHours < 24) return "${diff.inHours} hrs ago";
+    if (diff.inDays == 1) return "1 day ago";
+    return "${diff.inDays} days ago";
   }
 
   Widget _buildBottomActionBar() {
@@ -493,7 +531,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  widget.isSaved ? "已收藏至我的美食地圖" : "收藏這家餐廳",
+                  widget.isSaved ? "Saved to your map" : "Save this spot",
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,

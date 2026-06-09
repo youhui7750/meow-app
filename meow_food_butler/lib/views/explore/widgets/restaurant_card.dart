@@ -33,7 +33,7 @@ class RestaurantCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          experience.placeTitle ?? '未命名餐廳',
+                          experience.placeTitle ?? 'Unnamed restaurant',
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 18,
@@ -60,7 +60,7 @@ class RestaurantCard extends StatelessWidget {
             const SizedBox(height: 4),
 
             Text(
-              experience.placeAddress ?? '暫無地址資訊',
+              experience.placeAddress ?? 'No address available',
               style: TextStyle(color: Colors.grey[600], fontSize: 13),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -115,7 +115,7 @@ class RestaurantCard extends StatelessWidget {
                           children: [
                             Icon(Icons.image_not_supported_outlined, color: Colors.grey[400], size: 20),
                             const SizedBox(width: 8),
-                            Text('暫無相片記錄', style: TextStyle(color: Colors.grey[400], fontSize: 13)),
+                            Text('No photos yet', style: TextStyle(color: Colors.grey[400], fontSize: 13)),
                           ],
                         ),
                       ),
