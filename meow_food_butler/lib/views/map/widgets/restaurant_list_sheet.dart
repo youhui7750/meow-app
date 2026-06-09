@@ -20,8 +20,8 @@ class RestaurantListSheet extends StatelessWidget {
       rating: exp.personalRating,
       displayNames: [
         DisplayName(
-          title: exp.placeTitle ?? 'Unamed restaurant',
-          languageCode: 'zh-TW',
+          title: exp.placeTitle ?? 'Unnamed restaurant',
+          languageCode: 'en',
         )
       ],
       location: exp.latitude != null && exp.longitude != null
@@ -47,12 +47,12 @@ class RestaurantListSheet extends StatelessWidget {
                 isSaved: exp.isDone,
                 onClose: () => Navigator.pop(context), 
                 onToggleSave: () {
-                  // TODO: 串接 MapViewModel 的 toggleSaveStatus()
-                  debugPrint('點擊了收藏/取消收藏: ${exp.placeTitle}');
+                  // TODO: Connect MapViewModel's toggleSaveStatus()
+                  debugPrint('Toggled save status for: ${exp.placeTitle}');
                 },
                 onAddExperience: () {
-                  // TODO: 導航至新增體驗表單 (experience_entry_sheet.dart)
-                  debugPrint('點擊了新增體驗: ${exp.placeTitle}');
+                  // TODO: Navigate to the experience entry sheet
+                  debugPrint('Clicked add experience for: ${exp.placeTitle}');
                 },
               ),
             );
@@ -99,8 +99,8 @@ class RestaurantListSheet extends StatelessWidget {
                       child: RestaurantCard(
                         experience: exp,
                         onNavTap: () {
-                          // TODO: 串接 Google Maps 外部導航
-                          debugPrint('啟動導航前往: ${exp.placeTitle}');
+                          // TODO: Connect to Google Maps external navigation
+                          debugPrint('Starting navigation to: ${exp.placeTitle}');
                         },
                       ),
                     );
@@ -133,11 +133,11 @@ class RestaurantListSheet extends StatelessWidget {
       controller: scrollController,
       children: [
         _buildDragHandle(),
-        SizedBox(height: 40),
+        const SizedBox(height: 40),
         Icon(Icons.map_outlined, size: 64, color: Colors.grey[300]),
         const SizedBox(height: 16),
         Text(
-          "這附近還沒有探索紀錄",
+          "No exploration records nearby",
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.grey[500],
@@ -147,7 +147,7 @@ class RestaurantListSheet extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          "移動地圖或是新增你的第一筆美食體驗吧！",
+          "Move the map or add your first culinary experience!",
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.grey[400],
