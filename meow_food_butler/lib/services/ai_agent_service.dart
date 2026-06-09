@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:meow_food_butler/models/chat_message.dart';
+import 'package:meow_food_butler/services/location_service.dart';
 
 /// Thin chat client. All heavy lifting (Genkit / model calls, prompts, history)
 /// lives in the `chatWithButler` Cloud Function (`functions/index.js`). This
@@ -46,9 +47,22 @@ class ChatService {
     _emit();
 
     try {
+      // Resolve the user's location (prompts for permission the first time) so
+      // the backend `whereAmI` tool can answer "where am I?" questions. Optional:
+      // if it's null, the agent simply asks the user to enable location.
+      final location = await LocationService.tryGetLatLng();
+
+      final payload = <String, dynamic>{'prompt': prompt};
+      if (location != null) {
+        payload['location'] = {
+          'latitude': location.latitude,
+          'longitude': location.longitude,
+        };
+      }
+
       final result = await _functions
           .httpsCallable('chatWithButler')
-          .call<Map<String, dynamic>>({'prompt': prompt});
+          .call<Map<String, dynamic>>(payload);
 
       final data = result.data;
       // The backend always returns a human-readable `reply`; `code`/`ok`
