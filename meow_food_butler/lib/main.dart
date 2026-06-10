@@ -21,8 +21,8 @@ class FoodButlerApp extends StatelessWidget {
     final brightness = View.of(context).platformDispatcher.platformBrightness;
     TextTheme textTheme = createTextTheme(
       context,
-      "Abril Fatface",
-      "Abril Fatface",
+      "Nunito",
+      "Fraunces",
     );
     MaterialTheme theme = MaterialTheme(textTheme);
     return ChangeNotifierProvider(
