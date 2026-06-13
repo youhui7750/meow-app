@@ -13,11 +13,15 @@ class RestaurantCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 0,
+      color: colorScheme.surface,
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Colors.grey[200]!, width: 1),
+        side: BorderSide(color: colorScheme.outlineVariant, width: 1),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(
@@ -34,9 +38,9 @@ class RestaurantCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           experience.placeTitle ?? 'Unnamed restaurant',
-                          style: const TextStyle(
+                          style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
-                            fontSize: 18,
+                            color: colorScheme.onSurface,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -44,13 +48,13 @@ class RestaurantCard extends StatelessWidget {
                       ),
                       if (experience.isDone) ...[
                         const SizedBox(width: 6),
-                        const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                        Icon(Icons.check_circle, color: colorScheme.tertiary, size: 18),
                       ],
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.navigation, color: Colors.blue),
+                  icon: Icon(Icons.navigation, color: colorScheme.primary),
                   onPressed: onNavTap,
                   constraints: const BoxConstraints(),
                   padding: EdgeInsets.zero,
@@ -61,7 +65,7 @@ class RestaurantCard extends StatelessWidget {
 
             Text(
               experience.placeAddress ?? 'No address available',
-              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              style: textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -75,24 +79,27 @@ class RestaurantCard extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.star, color: Colors.orange, size: 16),
+                    Icon(Icons.star, color: colorScheme.primary, size: 16),
                     const SizedBox(width: 2),
                     Text(
                       experience.personalRating.toStringAsFixed(1),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      style: textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold, 
+                        color: colorScheme.primary
+                      ),
                     ),
                   ],
                 ),
-                Container(width: 1, height: 12, color: Colors.grey[300]),
+                Container(width: 1, height: 12, color: colorScheme.outlineVariant),
                 ...experience.personalTags.map((tag) => Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.grey[100],
+                        color: colorScheme.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         '#$tag',
-                        style: TextStyle(color: Colors.grey[700], fontSize: 12),
+                        style: textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant),
                       ),
                     )),
               ],
@@ -105,17 +112,17 @@ class RestaurantCard extends StatelessWidget {
                   ? Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.grey[50],
+                        color: colorScheme.surfaceContainerLow,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[100]!),
+                        border: Border.all(color: colorScheme.outlineVariant),
                       ),
                       child: Center(
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.image_not_supported_outlined, color: Colors.grey[400], size: 20),
+                            Icon(Icons.image_not_supported_outlined, color: colorScheme.outline, size: 20),
                             const SizedBox(width: 8),
-                            Text('No photos yet', style: TextStyle(color: Colors.grey[400], fontSize: 13)),
+                            Text('No photos yet', style: textTheme.bodySmall?.copyWith(color: colorScheme.outline)),
                           ],
                         ),
                       ),
@@ -143,16 +150,15 @@ class RestaurantCard extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.amber[50]?.withOpacity(0.5),
+                  color: colorScheme.primaryContainer.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber[100]!, width: 0.5),
+                  border: Border.all(color: colorScheme.primaryContainer, width: 1),
                 ),
                 child: Text(
                   '“${experience.personalNote}”',
-                  style: TextStyle(
-                    color: Colors.amber[900],
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onPrimaryContainer,
                     fontStyle: FontStyle.italic,
-                    fontSize: 13,
                   ),
                 ),
               ),

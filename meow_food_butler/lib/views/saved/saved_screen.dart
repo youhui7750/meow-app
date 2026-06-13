@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:meow_food_butler/models/experience_card.dart';
-import 'package:meow_food_butler/view_models/saved_view_model.dart';
-import 'package:meow_food_butler/views/saved/experience_detail_screen.dart';
-import 'package:meow_food_butler/views/saved/experience_entry_sheet.dart';
-import 'package:meow_food_butler/views/saved/widgets/experience_photo.dart';
 import 'package:provider/provider.dart';
+
+import '../../models/experience_card.dart';
+import '../../models/food_card.dart';
+import '../../view_models/saved_view_model.dart';
+import '../explore/widgets/restaurant_card.dart';
+import 'experience_entry_sheet.dart';
+import 'food_card_detail.dart';
 
 class SavedScreen extends StatelessWidget {
   const SavedScreen({super.key});
@@ -19,19 +21,80 @@ class SavedScreen extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (sheetContext) => ExperienceEntrySheet(
-        initialExperience: experience,
-        onSave: (savedExperience, photos) async {
-          if (experience == null) {
-            await viewModel.addExperience(savedExperience, photos: photos);
-          } else {
-            await viewModel.updateExperience(
-              savedExperience,
-              newPhotos: photos,
-            );
-          }
-        },
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: ExperienceEntrySheet(
+          initialExperience: experience,
+          onSave: (savedExperience, photos) async {
+            if (experience == null) {
+              await viewModel.addExperience(savedExperience, photos: photos);
+            } else {
+              await viewModel.updateExperience(
+                savedExperience,
+                newPhotos: photos,
+              );
+            }
+          },
+        ),
       ),
+    );
+  }
+
+  void _showRestaurantDetail(
+    BuildContext context, 
+    ExperienceCard latestExp, 
+    List<ExperienceCard> allExperiences,
+  ) {
+    final relatedFoodCard = FoodCard(
+      id: latestExp.foodCardId,
+      originalURL: latestExp.photoUrls.isNotEmpty 
+          ? latestExp.photoUrls.first 
+          : latestExp.originalURL,
+      formattedAddress: latestExp.placeAddress,
+      rating: latestExp.personalRating,
+      displayNames: [
+        DisplayName(
+          title: latestExp.placeTitle ?? 'Unnamed restaurant',
+          languageCode: 'en',
+        )
+      ],
+      location: latestExp.latitude != null && latestExp.longitude != null
+          ? LocationCoordinate(
+              latitude: latestExp.latitude!, 
+              longitude: latestExp.longitude!
+            )
+          : null,
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.95, 
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (_, controller) {
+            return ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              child: FoodCardDetail(
+                foodCard: relatedFoodCard,
+                experiences: allExperiences,
+                isSaved: true,
+                showOnlineInfoTab: false, 
+                onClose: () => Navigator.pop(context),
+                onToggleSave: () {}, 
+                onAddExperience: () {}, 
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -40,17 +103,25 @@ class SavedScreen extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Dining Experiences')),
+      appBar: AppBar(
+        title: const Text('My Spots', style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: false,
+        elevation: 0,
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openExperienceSheet(context),
+        backgroundColor: colorScheme.primaryContainer,
+        foregroundColor: colorScheme.onPrimaryContainer,
         icon: const Icon(Icons.add),
-        label: const Text('Log meal'),
+        label: const Text('Log meal', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: Consumer<SavedViewModel>(
         builder: (context, viewModel, child) {
-          final experiences = viewModel.experiences;
+          final groupedData = viewModel.groupedExperiences;
 
-          if (experiences.isEmpty) {
+          if (groupedData.isEmpty) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(32),
@@ -59,14 +130,15 @@ class SavedScreen extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.restaurant_menu,
-                      size: 48,
-                      color: colorScheme.primary,
+                      size: 64,
+                      color: colorScheme.surfaceContainerHighest,
                     ),
                     const SizedBox(height: 16),
                     Text(
                       'No meals logged yet',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w700,
+                        color: colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -84,29 +156,52 @@ class SavedScreen extends StatelessWidget {
           }
 
           return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-            itemCount: experiences.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            padding: const EdgeInsets.fromLTRB(0, 8, 0, 96),
+            itemCount: groupedData.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 0),
             itemBuilder: (context, index) {
-              final experience = experiences[index];
-              return _ExperienceCardTile(
-                experience: experience,
-                onTap: () {
-                  final id = experience.id;
-                  if (id == null) return;
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (context) =>
-                          ExperienceDetailScreen(experienceId: id),
+              final restaurantExperiences = groupedData[index];
+              final latestExp = restaurantExperiences.first;
+
+              return Stack(
+                children: [
+                  GestureDetector(
+                    onTap: () => _showRestaurantDetail(context, latestExp, restaurantExperiences),
+                    child: RestaurantCard(
+                      experience: latestExp,
+                      onNavTap: () {
+                        debugPrint('Navigate to: ${latestExp.placeTitle}');
+                      },
                     ),
-                  );
-                },
-                onEdit: () =>
-                    _openExperienceSheet(context, experience: experience),
-                onDelete: () {
-                  final id = experience.id;
-                  if (id != null) viewModel.removeExperience(id);
-                },
+                  ),
+                  
+                  if (restaurantExperiences.length > 1)
+                    Positioned(
+                      top: 16,
+                      right: 24,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: colorScheme.shadow.withOpacity(0.2),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            )
+                          ]
+                        ),
+                        child: Text(
+                          '${restaurantExperiences.length} visits',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: colorScheme.onPrimary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               );
             },
           );
@@ -114,191 +209,4 @@ class SavedScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ExperienceCardTile extends StatelessWidget {
-  final ExperienceCard experience;
-  final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  const _ExperienceCardTile({
-    required this.experience,
-    required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final date = experience.createdTime.toDate();
-    final dateText = '${date.month}/${date.day}/${date.year}';
-
-    return Card(
-      elevation: 0,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: colorScheme.outlineVariant),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ExperiencePhoto(
-                    key: ValueKey(
-                      '${experience.id}-${experience.photoPaths.firstOrNull ?? experience.photoUrls.firstOrNull ?? 'empty'}',
-                    ),
-                    experience: experience,
-                    width: 56,
-                    height: 56,
-                    borderRadius: 14,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          experience.placeTitle ?? 'Unknown Food Spot',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            _MiniStarRow(rating: experience.personalRating),
-                            const SizedBox(width: 4),
-                            Text(
-                              experience.personalRating.toStringAsFixed(1),
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: Colors.amber.shade800,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              dateText,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  PopupMenuButton<String>(
-                    onSelected: (value) {
-                      if (value == 'edit') onEdit();
-                      if (value == 'delete') onDelete();
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Text('Delete'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              if (experience.personalNote?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                Text(
-                  experience.personalNote!,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
-              if (experience.personalTags.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: experience.personalTags
-                      .map(
-                        (tag) => Chip(
-                          label: Text('#$tag'),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniStarRow extends StatelessWidget {
-  final double rating;
-
-  const _MiniStarRow({required this.rating});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: List.generate(
-        5,
-        (index) => Padding(
-          padding: const EdgeInsets.only(right: 1),
-          child: _MiniPartialStar(fill: (rating - index).clamp(0.0, 1.0)),
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniPartialStar extends StatelessWidget {
-  final double fill;
-
-  const _MiniPartialStar({required this.fill});
-
-  @override
-  Widget build(BuildContext context) {
-    const size = 14.0;
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(
-        children: [
-          Icon(Icons.star_border, size: size, color: Colors.blueGrey.shade200),
-          ClipRect(
-            clipper: _WidthClipper(fill),
-            child: Icon(Icons.star, size: size, color: Colors.amber.shade600),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WidthClipper extends CustomClipper<Rect> {
-  final double factor;
-
-  const _WidthClipper(this.factor);
-
-  @override
-  Rect getClip(Size size) {
-    return Rect.fromLTWH(0, 0, size.width * factor, size.height);
-  }
-
-  @override
-  bool shouldReclip(_WidthClipper oldClipper) => oldClipper.factor != factor;
 }

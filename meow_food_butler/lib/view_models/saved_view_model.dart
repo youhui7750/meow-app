@@ -15,11 +15,51 @@ class SavedViewModel extends ChangeNotifier {
   String? _errorMessage;
 
   SavedViewModel({ExperienceRepository? repository})
-    : _repository = repository ?? ExperienceRepository() {
+      : _repository = repository ?? ExperienceRepository() {
     _watchExperiences();
   }
 
+  // Original flat list of all experiences
   List<ExperienceCard> get experiences => List.unmodifiable(_experiences);
+
+  // NEW: Grouped list by restaurant
+  List<List<ExperienceCard>> get groupedExperiences {
+    final map = <String, List<ExperienceCard>>{};
+
+    for (final exp in _experiences) {
+      // Grouping priority: foodCardId > placeId > placeTitle > id
+      final key = exp.foodCardId ?? exp.placeId ?? exp.placeTitle ?? exp.id;
+      final safeKey = key ?? 'unknown';
+      
+      map.putIfAbsent(safeKey, () => []).add(exp);
+    }
+
+    final groupedList = map.values.toList();
+
+    // 1. Sort experiences within each restaurant group (newest meal first)
+    for (final group in groupedList) {
+      group.sort((a, b) {
+        if (a.createdTime == null && b.createdTime == null) return 0;
+        if (a.createdTime == null) return 1;
+        if (b.createdTime == null) return -1;
+        return b.createdTime!.compareTo(a.createdTime!);
+      });
+    }
+
+    // 2. Sort the restaurant groups themselves (most recently updated restaurant first)
+    groupedList.sort((a, b) {
+      final aLatest = a.first.createdTime;
+      final bLatest = b.first.createdTime;
+      
+      if (aLatest == null && bLatest == null) return 0;
+      if (aLatest == null) return 1;
+      if (bLatest == null) return -1;
+      return bLatest.compareTo(aLatest);
+    });
+
+    return groupedList;
+  }
+
   bool get isSaving => _isSaving;
   String? get errorMessage => _errorMessage;
 

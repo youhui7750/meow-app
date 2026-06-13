@@ -47,11 +47,9 @@ class RestaurantListSheet extends StatelessWidget {
                 isSaved: exp.isDone,
                 onClose: () => Navigator.pop(context), 
                 onToggleSave: () {
-                  // TODO: Connect MapViewModel's toggleSaveStatus()
                   debugPrint('Toggled save status for: ${exp.placeTitle}');
                 },
                 onAddExperience: () {
-                  // TODO: Navigate to the experience entry sheet
                   debugPrint('Clicked add experience for: ${exp.placeTitle}');
                 },
               ),
@@ -64,6 +62,8 @@ class RestaurantListSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return DraggableScrollableSheet(
       initialChildSize: 0.35, 
       minChildSize: 0.12,     
@@ -71,25 +71,25 @@ class RestaurantListSheet extends StatelessWidget {
       builder: (BuildContext context, ScrollController scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
+            color: colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.12),
+                color: colorScheme.shadow.withOpacity(0.12),
                 blurRadius: 12,
                 spreadRadius: 2,
               ),
             ],
           ),
           child: experiences.isEmpty
-              ? _buildEmptyState(scrollController)
+              ? _buildEmptyState(scrollController, context)
               : ListView.builder(
                   controller: scrollController,
                   itemCount: experiences.length + 1,
                   itemBuilder: (context, index) {
                     
                     if (index == 0) {
-                      return _buildDragHandle();
+                      return _buildDragHandle(colorScheme);
                     }
 
                     final exp = experiences[index - 1];
@@ -99,7 +99,6 @@ class RestaurantListSheet extends StatelessWidget {
                       child: RestaurantCard(
                         experience: exp,
                         onNavTap: () {
-                          // TODO: Connect to Google Maps external navigation
                           debugPrint('Starting navigation to: ${exp.placeTitle}');
                         },
                       ),
@@ -111,7 +110,7 @@ class RestaurantListSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildDragHandle() {
+  Widget _buildDragHandle(ColorScheme colorScheme) {
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -119,7 +118,7 @@ class RestaurantListSheet extends StatelessWidget {
           height: 5,
           width: 40,
           decoration: BoxDecoration(
-            color: Colors.grey[300],
+            color: colorScheme.outlineVariant,
             borderRadius: BorderRadius.circular(10),
           ),
         ),
@@ -128,20 +127,22 @@ class RestaurantListSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState(ScrollController scrollController) {
+  Widget _buildEmptyState(ScrollController scrollController, BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return ListView(
       controller: scrollController,
       children: [
-        _buildDragHandle(),
+        _buildDragHandle(colorScheme),
         const SizedBox(height: 40),
-        Icon(Icons.map_outlined, size: 64, color: Colors.grey[300]),
+        Icon(Icons.map_outlined, size: 64, color: colorScheme.surfaceContainerHigh),
         const SizedBox(height: 16),
         Text(
           "No exploration records nearby",
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.grey[500],
-            fontSize: 16,
+          style: textTheme.titleMedium?.copyWith(
+            color: colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -149,9 +150,8 @@ class RestaurantListSheet extends StatelessWidget {
         Text(
           "Move the map or add your first culinary experience!",
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.grey[400],
-            fontSize: 14,
+          style: textTheme.bodyMedium?.copyWith(
+            color: colorScheme.outline,
           ),
         ),
       ],
