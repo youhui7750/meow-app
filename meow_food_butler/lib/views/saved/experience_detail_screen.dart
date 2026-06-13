@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
+import 'package:meow_food_butler/views/saved/share_card_page.dart';
 import 'package:meow_food_butler/views/saved/experience_entry_sheet.dart';
 import 'package:meow_food_butler/views/saved/widgets/experience_photo.dart';
 import 'package:provider/provider.dart';
@@ -56,6 +57,12 @@ class ExperienceDetailScreen extends StatelessWidget {
     await viewModel.removeExperience(experience.id!);
     if (!context.mounted) return;
     Navigator.of(context).pop();
+  }
+
+  String _formatCardDate(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}.$month.$day';
   }
 
   @override
@@ -115,7 +122,28 @@ class ExperienceDetailScreen extends StatelessWidget {
                 color: colorScheme.error,
               ),
               IconButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ShareCardPage(
+                        data: RestaurantCardData(
+                          name: experience.placeTitle ?? 'Unknown Restaurant',
+                          address: experience.placeAddress ?? 'Unknown address',
+                          personalRating: experience.personalRating,
+                          personalNote: experience.personalNote ?? '',
+                          photoUrl: experience.photoUrls.isNotEmpty
+                              ? experience.photoUrls.first
+                              : null,
+                          photoPath: experience.photoPaths.isNotEmpty
+                              ? experience.photoPaths.first
+                              : null,
+                          date: _formatCardDate(experience.createdTime.toDate()),
+                        ),
+                      ),
+                    ),
+                  );
+                },
                 icon: const Icon(Icons.share_outlined),
                 tooltip: 'Share',
               ),
