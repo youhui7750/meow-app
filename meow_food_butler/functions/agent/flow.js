@@ -12,8 +12,9 @@
 const { googleAI } = require("@genkit-ai/googleai");
 const logger = require("firebase-functions/logger");
 
-const { MODEL, resolveGeminiApiKeys } = require("../config");
+const { MODEL } = require("../config");
 const { getButler, buildSystem } = require("./butler");
+const { getGeminiKeys } = require("./keys");
 const { state, classifyError } = require("./errors");
 
 /**
@@ -46,7 +47,7 @@ async function runButlerFlow(prompt, ctx = {}) {
   }
 
   // --- Credential check before we even try ----------------------------------
-  const keys = resolveGeminiApiKeys();
+  const keys = await getGeminiKeys();
   if (!keys.length) {
     return state(
       "API_KEY_MISSING",
@@ -61,10 +62,12 @@ async function runButlerFlow(prompt, ctx = {}) {
   // Drive from the full conversation: prior turns + the new user turn.
   const messages = [...history, { role: "user", content: [{ text: prompt }] }];
 
-  // --- Real model call with QUOTA-based key rotation ------------------------
-  // Try each available key in turn. On a quota / rate-limit error, rotate to the
-  // next key; any OTHER error (bad key, model not found, …) short-circuits with
-  // its message so we don't burn the remaining keys on a non-quota problem.
+  // --- Real model call with key rotation ------------------------------------
+  // Try each available key in turn and rotate past ANY failure — with rapid key
+  // swaps a key may be quota'd, invalid, or not-yet-active, and one dud shouldn't
+  // break the call. We only give up once every key has failed.
+  let lastClassified = null;
+  let allQuota = true;
   for (let i = 0; i < keys.length; i += 1) {
     try {
       const { instance, tools } = getButler(keys[i]);
@@ -82,28 +85,32 @@ async function runButlerFlow(prompt, ctx = {}) {
       }
       return state("OK", text, true);
     } catch (err) {
-      const classified = classifyError(err);
+      lastClassified = classifyError(err);
+      if (lastClassified.code !== "QUOTA_EXCEEDED") allQuota = false;
       logger.error("Gemini generate() failed", {
         keyIndex: i + 1,
         keyCount: keys.length,
-        code: classified.code,
+        code: lastClassified.code,
         status: err && (err.status || err.code),
         message: err && err.message,
       });
-      // Non-quota error: return it immediately. Quota: fall through to next key.
-      if (classified.code !== "QUOTA_EXCEEDED") {
-        return classified;
-      }
+      // Rotate to the next key.
     }
   }
 
-  // Every available key is quota-exhausted.
+  // Every available key failed.
+  if (allQuota) {
+    return state(
+      "QUOTA_EXCEEDED",
+      `😿 Error: all keys quota exceeded. All ${keys.length} Gemini key(s) hit their ` +
+        `quota / rate limit for ${MODEL}. Add more keys to the config/gemini doc ` +
+        `(ideally from different GCP projects), wait for the daily reset, or enable billing.`,
+    );
+  }
   return state(
-    "QUOTA_EXCEEDED",
-    `😿 Error: all keys quota exceeded. All ${keys.length} GEMINI_API_KEY value(s) ` +
-      `hit their quota / rate limit for ${MODEL}. Add more keys (newline- or ` +
-      `comma-separated in the GEMINI_API_KEY secret, ideally from different GCP ` +
-      `projects) and redeploy, wait for the daily reset, or enable billing.`,
+    lastClassified ? lastClassified.code : "UPSTREAM_ERROR",
+    `😿 Error: all ${keys.length} Gemini key(s) failed and none worked. ` +
+      `Last issue: ${lastClassified ? lastClassified.reply : "unknown"}`,
   );
 }
 

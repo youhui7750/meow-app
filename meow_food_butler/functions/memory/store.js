@@ -20,16 +20,42 @@ const { memoryCol } = require("../collections");
 // Cap how many memories we pull for brute-force scoring (demo-scale guard).
 const MAX_SCAN = 200;
 
+// Embedding models to try, best first. The Gemini Developer API exposes a
+// different set per key/version (we've seen text-embedding-004 return 404), so
+// we fall through this list and cache the first that works. Keys must be embedded
+// with the SAME model for read+write — fine here since the cache is process-wide
+// and the memory collection starts empty.
+const EMBED_CANDIDATES = [
+  EMBEDDER,
+  "gemini-embedding-001",
+  "text-embedding-004",
+  "embedding-001",
+].filter((v, i, arr) => v && arr.indexOf(v) === i);
+let _workingEmbedder = null;
+
 /** Embed `text` into a numeric vector via the Gemini embedding model. */
 async function embed(ai, text) {
-  const res = await ai.embed({
-    embedder: googleAI.embedder(EMBEDDER),
-    content: text,
-  });
-  // Genkit returns an array of `{ embedding: number[] }`; be defensive about shape.
-  const first = Array.isArray(res) ? res[0] : res;
-  const vector = (first && (first.embedding || first.output || first)) || [];
-  return Array.isArray(vector) ? vector : [];
+  const candidates = _workingEmbedder ? [_workingEmbedder] : EMBED_CANDIDATES;
+  let lastErr;
+  for (const model of candidates) {
+    try {
+      const res = await ai.embed({ embedder: googleAI.embedder(model), content: text });
+      // Genkit returns an array of `{ embedding: number[] }`; be defensive about shape.
+      const first = Array.isArray(res) ? res[0] : res;
+      const vector = (first && (first.embedding || first.output || first)) || [];
+      if (Array.isArray(vector) && vector.length) {
+        if (_workingEmbedder !== model) {
+          _workingEmbedder = model;
+          logger.info(`memory: using embedding model "${model}"`);
+        }
+        return vector;
+      }
+    } catch (e) {
+      lastErr = e;
+      // Try the next candidate (e.g. on 404 model-not-found for this key).
+    }
+  }
+  throw lastErr || new Error("no embedding model produced a vector");
 }
 
 /** Cosine similarity of two equal-length numeric vectors. */

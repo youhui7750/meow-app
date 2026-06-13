@@ -16,7 +16,10 @@ const logger = require("firebase-functions/logger");
 // Match the project's Firestore region (see firebase.json).
 const REGION = "asia-east1";
 const MODEL = "googleai/gemini-2.5-flash";
-const EMBEDDER = "text-embedding-004"; // googleai/text-embedding-004
+// Primary embedding model. The Gemini Developer API doesn't expose the same set
+// for every key/version (text-embedding-004 can 404), so memory/store.js tries
+// this first then falls through a candidate list and caches what works.
+const EMBEDDER = "gemini-embedding-001";
 
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 const placesApiKey = defineSecret("PLACES_API_KEY");
@@ -34,20 +37,28 @@ function rawGeminiSecret() {
 }
 
 /**
- * All available Gemini API keys, for quota rotation. Store several keys in the
- * GEMINI_API_KEY secret separated by newlines or commas (ideally keys from
- * different GCP projects, since free-tier quota is per-project). Google API keys
- * contain no whitespace/commas, so splitting on them is safe. Deduped, in order.
+ * Split a raw string of one-or-more keys into a deduped, ordered list. Keys may
+ * be separated by newlines, commas, or whitespace (Google API keys contain none
+ * of those, so this is safe).
  */
-function resolveGeminiApiKeys() {
+function splitKeys(raw) {
   return [
     ...new Set(
-      rawGeminiSecret()
+      String(raw || "")
         .split(/[\s,]+/)
         .map((s) => s.trim())
         .filter(Boolean),
     ),
   ];
+}
+
+/**
+ * Gemini API keys from the bound secret / env (the deploy-time fallback source).
+ * The live, redeploy-free source is the Firestore `config/gemini` doc — see
+ * `agent/keys.js` `getGeminiKeys()`, which falls back to this.
+ */
+function resolveGeminiApiKeys() {
+  return splitKeys(rawGeminiSecret());
 }
 
 /** First available key (back-compat: presence checks, embeddings). */
@@ -74,4 +85,5 @@ module.exports = {
   resolveGeminiApiKey,
   resolveGeminiApiKeys,
   resolvePlacesApiKey,
+  splitKeys,
 };

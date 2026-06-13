@@ -22,7 +22,7 @@ const db = admin.firestore();
 
 // Phase 0 has no auth wired yet; everything reads/writes a single demo user.
 // Keep this in sync with the client's user id.
-const DEMO_USER = "demo_user";
+const DEMO_USER = "demo-user";
 
 const userRef = (uid) => db.collection("users").doc(uid);
 const sessionsCol = (uid) => userRef(uid).collection("sessions");
@@ -30,6 +30,10 @@ const messagesCol = (uid, sessionId) =>
   sessionsCol(uid).doc(sessionId).collection("messages");
 const memoryCol = (uid) => userRef(uid).collection("memory");
 const prefsDoc = (uid) => userRef(uid).collection("preferences").doc("profile");
+
+// Server-only config (e.g. rotating API keys). Locked from clients in
+// firestore.rules; the Admin SDK here bypasses rules. Edit via the console.
+const configDoc = (name) => db.collection("config").doc(name);
 
 module.exports = {
   admin,
@@ -40,4 +44,5 @@ module.exports = {
   messagesCol,
   memoryCol,
   prefsDoc,
+  configDoc,
 };

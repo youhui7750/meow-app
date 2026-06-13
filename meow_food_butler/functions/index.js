@@ -20,11 +20,11 @@ const {
   REGION,
   geminiApiKey,
   placesApiKey,
-  resolveGeminiApiKey,
   resolvePlacesApiKey,
 } = require("./config");
 const { DEMO_USER } = require("./collections");
 const { getButler } = require("./agent/butler");
+const { getGeminiKeys } = require("./agent/keys");
 const { runButlerFlow } = require("./agent/flow");
 const memory = require("./memory/store");
 const sessions = require("./sessions/store");
@@ -76,12 +76,12 @@ exports.chatWithButler = onCall(
     // failed reply never pollutes the conversation.
     const history = await sessions.recentMessages(userId, sessionId);
 
-    // RAG recall (best-effort). Only build the butler when the key is present so
-    // we never cache a broken instance for later real calls.
+    // RAG recall (best-effort). Use the first live key; only build the butler
+    // when a key is present so we never cache a broken instance for later calls.
     let recalled = [];
-    const apiKey = resolveGeminiApiKey();
-    if (apiKey) {
-      const { instance } = getButler(apiKey);
+    const keys = await getGeminiKeys();
+    if (keys.length) {
+      const { instance } = getButler(keys[0]);
       recalled = await memory.recall(instance, { userId, query: prompt });
     }
 
@@ -124,7 +124,7 @@ exports.checkApiKeys = onCall(
   { secrets: [geminiApiKey, placesApiKey] },
   async () => {
     const missing = [];
-    if (!resolveGeminiApiKey()) missing.push("GEMINI_API_KEY");
+    if (!(await getGeminiKeys()).length) missing.push("GEMINI_API_KEY");
     if (!resolvePlacesApiKey()) missing.push("PLACES_API_KEY");
 
     if (missing.length === 0) {
