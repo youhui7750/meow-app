@@ -1,9 +1,14 @@
 /**
- * Firestore foundation for the agent (Phase 0).
+ * Firestore foundation for the agent.
  *
- * Collections are created lazily by Firestore on first write — there's nothing
- * to "provision". This module just centralizes their names and a shared admin /
- * db handle so every tool refers to the same identifiers.
+ * Everything is stored under a per-user tree (`users/{uid}/…`) so going
+ * multi-user later is just a matter of swapping the id. Collections are created
+ * lazily by Firestore on first write — there's nothing to "provision".
+ *
+ *   users/{uid}/sessions/{sessionId}              { title, createdAt, updatedAt }
+ *   users/{uid}/sessions/{sessionId}/messages/{m} { role, text, createdAt }
+ *   users/{uid}/memory/{m}                         { text, kind, embedding, … }
+ *   users/{uid}/preferences/profile                { likes, dislikes, maxWalkMinutes }
  */
 
 const admin = require("firebase-admin");
@@ -15,12 +20,24 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-/** Canonical collection names used across the agent's tools. */
-const COLLECTIONS = {
-  foodCards: "food_cards", // FoodCard candidates (Places-shaped)
-  experiences: "experiences", // ExperienceCard saved records
-  preferences: "preferences", // per-user structured prefs (RAG source)
-  memory: "memory", // per-user memory log / embeddings (RAG source)
-};
+// Phase 0 has no auth wired yet; everything reads/writes a single demo user.
+// Keep this in sync with the client's user id.
+const DEMO_USER = "demo_user";
 
-module.exports = { admin, db, COLLECTIONS };
+const userRef = (uid) => db.collection("users").doc(uid);
+const sessionsCol = (uid) => userRef(uid).collection("sessions");
+const messagesCol = (uid, sessionId) =>
+  sessionsCol(uid).doc(sessionId).collection("messages");
+const memoryCol = (uid) => userRef(uid).collection("memory");
+const prefsDoc = (uid) => userRef(uid).collection("preferences").doc("profile");
+
+module.exports = {
+  admin,
+  db,
+  DEMO_USER,
+  userRef,
+  sessionsCol,
+  messagesCol,
+  memoryCol,
+  prefsDoc,
+};

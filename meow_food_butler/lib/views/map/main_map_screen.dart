@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:meow_food_butler/view_models/instagram_import_vm.dart';
+import 'package:meow_food_butler/views/map/widgets/import_dialog.dart';
+import 'package:provider/provider.dart';
 import '../../models/experience_card.dart';
 import 'widgets/restaurant_list_sheet.dart';
 
@@ -18,6 +21,28 @@ class _MainMapScreenState extends State<MainMapScreen> {
   LatLng _center = _defaultCenter;
   bool _canUseLocation = false;
   bool _isLocating = false;
+
+  List<ExperienceCard> experiences = [
+    ExperienceCard(
+      id: 'mock_1',
+      placeTitle: '大安優質拉麵屋',
+      placeAddress: '台北市大安區信義路四段XX號',
+      personalRating: 4.8,
+      personalTags: ['豚骨拉麵', '排隊美食'],
+      personalNote: '濃郁的湯頭配上黃金比例的叉燒，簡直是人間美味！必點溏心蛋。',
+      isDone: true,
+      photoUrls: ['https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400'],
+    ),
+    ExperienceCard(
+      id: 'mock_2',
+      placeTitle: '微風高空餐酒館',
+      placeAddress: '台北市信義區忠孝東路五段XX號',
+      personalRating: 4.2,
+      personalTags: ['夜景', '微醺約會', '餐酒館'],
+      isDone: false,
+      photoUrls: [], 
+    ),
+  ];
 
   @override
   void initState() {
@@ -72,27 +97,27 @@ class _MainMapScreenState extends State<MainMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final mockExperiences = [
-      ExperienceCard(
-        id: 'mock_1',
-        placeTitle: '大安優質拉麵屋',
-        placeAddress: '台北市大安區信義路四段XX號',
-        personalRating: 4.8,
-        personalTags: ['豚骨拉麵', '排隊美食'],
-        personalNote: '濃郁的湯頭配上黃金比例的叉燒，簡直是人間美味！必點溏心蛋。',
-        isDone: true,
-        photoUrls: ['https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400'],
-      ),
-      ExperienceCard(
-        id: 'mock_2',
-        placeTitle: '微風高空餐酒館',
-        placeAddress: '台北市信義區忠孝東路五段XX號',
-        personalRating: 4.2,
-        personalTags: ['夜景', '微醺約會', '餐酒館'],
-        isDone: false,
-        photoUrls: [], 
-      ),
-    ];
+    // final mockExperiences = [
+    //   ExperienceCard(
+    //     id: 'mock_1',
+    //     placeTitle: '大安優質拉麵屋',
+    //     placeAddress: '台北市大安區信義路四段XX號',
+    //     personalRating: 4.8,
+    //     personalTags: ['豚骨拉麵', '排隊美食'],
+    //     personalNote: '濃郁的湯頭配上黃金比例的叉燒，簡直是人間美味！必點溏心蛋。',
+    //     isDone: true,
+    //     photoUrls: ['https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400'],
+    //   ),
+    //   ExperienceCard(
+    //     id: 'mock_2',
+    //     placeTitle: '微風高空餐酒館',
+    //     placeAddress: '台北市信義區忠孝東路五段XX號',
+    //     personalRating: 4.2,
+    //     personalTags: ['夜景', '微醺約會', '餐酒館'],
+    //     isDone: false,
+    //     photoUrls: [], 
+    //   ),
+    // ];
 
     return Scaffold(
       body: Stack(
@@ -121,8 +146,28 @@ class _MainMapScreenState extends State<MainMapScreen> {
             ),
           ),
 
-          RestaurantListSheet(experiences: mockExperiences),
+          RestaurantListSheet(experiences: experiences),
         ],
+      ),
+
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final newExpCard = await showDialog<ExperienceCard>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => ChangeNotifierProvider(
+              create: (_) => InstagramImportViewModel(),
+              child: const ImportInstagramDialog(),
+            ),
+          );
+
+          if (newExpCard != null && mounted) {
+            setState(() {
+              experiences.insert(0, newExpCard);
+            });
+          }
+        },
+        child: const Icon(Icons.add),
       ),
     );
   }

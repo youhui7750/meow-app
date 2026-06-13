@@ -1,6 +1,5 @@
 # meow_food_butler
 
-(some instructions that can pass to the code generator)
 Name the file with the convention:
 - `views`: `foo_page.dart`
 - `state`: `foo_notifier.dart`

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:meow_food_butler/models/chat_message.dart';
+import 'package:meow_food_butler/models/chat_session.dart';
 import 'package:meow_food_butler/services/ai_agent_service.dart';
 
 class ChatScreen extends StatelessWidget {
@@ -66,7 +67,15 @@ class _ChatState extends State<Chat> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_comment_outlined),
+            tooltip: 'New chat',
+            onPressed: () => _chatService.startNewSession(),
+          ),
+        ],
       ),
+      drawer: _SessionsDrawer(service: _chatService),
       body: Column(
         children: [
           Expanded(
@@ -224,6 +233,82 @@ class _Composer extends StatelessWidget {
                     size: 22,
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// History drawer: lists past chat sessions, plus a "New chat" action. Tapping a
+/// session switches the chat to it. Backed by [ChatService.sessionsStream].
+class _SessionsDrawer extends StatelessWidget {
+  const _SessionsDrawer({required this.service});
+
+  final ChatService service;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Chats',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_comment_outlined),
+              title: const Text('New chat'),
+              onTap: () {
+                service.startNewSession();
+                Navigator.of(context).pop();
+              },
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: StreamBuilder<List<ChatSession>>(
+                stream: service.sessionsStream,
+                builder: (context, snapshot) {
+                  final sessions = snapshot.data ?? const <ChatSession>[];
+                  if (sessions.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No chats yet',
+                        style: TextStyle(color: colorScheme.outline),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: sessions.length,
+                    itemBuilder: (context, index) {
+                      final session = sessions[index];
+                      final selected = session.id == service.currentSessionId;
+                      return ListTile(
+                        leading: const Icon(Icons.chat_bubble_outline),
+                        title: Text(
+                          session.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        selected: selected,
+                        selectedTileColor: colorScheme.surfaceContainerHighest,
+                        onTap: () {
+                          service.switchSession(session.id);
+                          Navigator.of(context).pop();
+                        },
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ],
