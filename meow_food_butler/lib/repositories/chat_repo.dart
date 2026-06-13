@@ -10,7 +10,7 @@ import 'package:meow_food_butler/models/chat_session.dart';
 ///
 /// Keep [_demoUid] in sync with the backend's `DEMO_USER` (`functions/collections.js`).
 class ChatRepository {
-  static const String _demoUid = 'demo_user';
+  static const String _demoUid = 'demo-user';
 
   final FirebaseFirestore _firestore;
 
