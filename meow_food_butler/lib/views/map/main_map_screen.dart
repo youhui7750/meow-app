@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:meow_food_butler/view_models/instagram_import_vm.dart';
+import 'package:meow_food_butler/views/map/widgets/import_dialog.dart';
+import 'package:provider/provider.dart';
 import '../../models/experience_card.dart';
 import 'widgets/restaurant_list_sheet.dart';
 
@@ -123,6 +126,20 @@ class _MainMapScreenState extends State<MainMapScreen> {
 
           RestaurantListSheet(experiences: mockExperiences),
         ],
+      ),
+
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => ChangeNotifierProvider(
+              create: (_) => InstagramImportViewModel(),
+              child: const ImportInstagramDialog(),
+            ),
+          );
+        },
+        child: const Icon(Icons.add),
       ),
     );
   }
