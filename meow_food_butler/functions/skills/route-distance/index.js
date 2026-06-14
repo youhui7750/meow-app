@@ -1,31 +1,56 @@
 /**
- * Skill: routeDistance (L2) — walking time from the user to a candidate spot.
+ * Skill: routeDistance (L2) — walking distance/time from the user to a spot.
  *
- * Mock per known spot for now. TODO(real): Google Maps Distance Matrix.
+ * Real straight-line (haversine) estimate from the user's current GPS
+ * (`context.location`) to the candidate's coordinates. No mock data. searchSpots
+ * already returns distance for its candidates, so this is mainly for spots the
+ * user names that didn't come through searchSpots. An upgrade to Google Routes
+ * API would replace haversine with true walking routes.
  */
 
 const { z } = require("genkit");
+
+const { haversineMeters, walkMinutes } = require("../../geo");
 
 function defineRouteDistance(ai) {
   return ai.defineTool(
     {
       name: "routeDistance",
       description:
-        "L2 skill. Computes walking time from the user's origin to a candidate " +
-        "spot. Use to filter candidates by the user's max walk time.",
+        "L2 skill. Estimates walking distance and time from the user's current " +
+        "location to a spot's coordinates. Use it to check a candidate against " +
+        "the user's max walk time. Needs the spot's latitude/longitude.",
       inputSchema: z.object({
-        spotId: z.string(),
-        origin: z.string().optional().describe("origin address or 'current'"),
+        latitude: z.number().describe("destination latitude"),
+        longitude: z.number().describe("destination longitude"),
+        spotName: z.string().optional().describe("for reference in your reply"),
       }),
       outputSchema: z.object({
-        spotId: z.string(),
-        walkMinutes: z.number(),
+        originKnown: z.boolean(),
+        distanceMeters: z.number().nullable(),
+        walkMinutes: z.number().nullable(),
+        note: z.string().optional(),
       }),
     },
-    async ({ spotId }) => {
-      // TODO(real): Google Maps Distance Matrix. Mock per known spot.
-      const table = { "taihe-ramen": 18, "menya-crowd": 12 };
-      return { spotId, walkMinutes: table[spotId] ?? 25 };
+    async ({ latitude, longitude }, { context }) => {
+      const loc = context && context.location;
+      const hasLoc =
+        loc && typeof loc.latitude === "number" && typeof loc.longitude === "number";
+      if (!hasLoc) {
+        return {
+          originKnown: false,
+          distanceMeters: null,
+          walkMinutes: null,
+          note: "No origin GPS available; can't measure the walk.",
+        };
+      }
+      const distanceMeters = Math.round(haversineMeters(loc, { latitude, longitude }));
+      return {
+        originKnown: true,
+        distanceMeters,
+        walkMinutes: walkMinutes(distanceMeters),
+        note: "Straight-line estimate (not a routed path).",
+      };
     },
   );
 }

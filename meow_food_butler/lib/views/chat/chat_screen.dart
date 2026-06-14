@@ -169,13 +169,48 @@ class _MessageBubble extends StatelessWidget {
           // The outlined box, same as the card's RoundedRectangleBorder side.
           border: Border.all(color: colorScheme.outlineVariant),
         ),
-        child: Text(
-          text,
-          style: TextStyle(color: textColor, fontSize: 15, height: 1.3),
+        child: Text.rich(
+          TextSpan(
+            style: TextStyle(color: textColor, fontSize: 15, height: 1.3),
+            children: _parseInlineMarkdown(text),
+          ),
         ),
       ),
     );
   }
+}
+
+/// Converts the inline Markdown the LLM emits (`**bold**`, `*italic*`) into
+/// styled [TextSpan]s. The bubble's parent [TextSpan] supplies colour/size; the
+/// styles here only layer on weight/slant so they merge cleanly. Anything that
+/// isn't a complete `**…**`/`*…*` pair is left verbatim, so stray asterisks are
+/// shown as-is rather than swallowed.
+List<InlineSpan> _parseInlineMarkdown(String text) {
+  final pattern = RegExp(r'\*\*(.+?)\*\*|\*(.+?)\*');
+  final spans = <InlineSpan>[];
+  var last = 0;
+  for (final match in pattern.allMatches(text)) {
+    if (match.start > last) {
+      spans.add(TextSpan(text: text.substring(last, match.start)));
+    }
+    final bold = match.group(1);
+    if (bold != null) {
+      spans.add(TextSpan(
+        text: bold,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ));
+    } else {
+      spans.add(TextSpan(
+        text: match.group(2),
+        style: const TextStyle(fontStyle: FontStyle.italic),
+      ));
+    }
+    last = match.end;
+  }
+  if (last < text.length) {
+    spans.add(TextSpan(text: text.substring(last)));
+  }
+  return spans;
 }
 
 /// The bottom input bar with a rounded field and circular send button.

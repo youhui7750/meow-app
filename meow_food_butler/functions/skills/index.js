@@ -11,6 +11,8 @@ const { defineWhereAmI } = require("./where-am-i");
 const { defineFindFreeTime } = require("./find-free-time");
 const { defineRecallMemory } = require("./recall-memory");
 const { defineRemember } = require("./remember");
+const { defineForget } = require("./forget");
+const { defineSetPreference } = require("./set-preference");
 const { defineSearchSpots } = require("./search-spots");
 const { defineRouteDistance } = require("./route-distance");
 const { defineDraftExperience } = require("./draft-experience");
@@ -27,7 +29,9 @@ function registerTools(ai, opts = {}) {
     defineFindFreeTime(ai),
     defineRecallMemory(ai),
     defineRemember(ai),
-    defineSearchSpots(ai),
+    defineForget(ai),
+    defineSetPreference(ai),
+    defineSearchSpots(ai, { placesApiKey: opts.placesApiKey || "" }),
     defineRouteDistance(ai),
     defineDraftExperience(ai),
   ];

@@ -124,4 +124,42 @@ async function recall(ai, { userId, query, k = 5, floor = 0.3 }) {
   }
 }
 
-module.exports = { embed, remember, recall, cosine };
+/**
+ * Delete a user's memories that match `query` above a (high) similarity floor.
+ * Used when the user retracts or changes a preference, so stale facts don't keep
+ * getting recalled. Best-effort: returns `{ deleted, texts }`, never throws.
+ *
+ * The floor defaults high (0.82) so we only remove memories that clearly mean
+ * the same thing as `query` — better to leave a borderline memory than to wipe
+ * an unrelated one.
+ * @returns {Promise<{ deleted: number, texts: string[] }>}
+ */
+async function forget(ai, { userId, query, floor = 0.82, max = 20 }) {
+  if (!query || !query.trim()) return { deleted: 0, texts: [] };
+  try {
+    const snap = await memoryCol(userId).limit(MAX_SCAN).get();
+    if (snap.empty) return { deleted: 0, texts: [] };
+
+    const queryVec = await embed(ai, query);
+    const matches = [];
+    snap.forEach((doc) => {
+      const d = doc.data() || {};
+      if (!Array.isArray(d.embedding)) return;
+      if (cosine(queryVec, d.embedding) >= floor) {
+        matches.push({ ref: doc.ref, text: d.text });
+      }
+    });
+    if (!matches.length) return { deleted: 0, texts: [] };
+
+    const victims = matches.slice(0, max);
+    const batch = memoryCol(userId).firestore.batch();
+    victims.forEach((m) => batch.delete(m.ref));
+    await batch.commit();
+    return { deleted: victims.length, texts: victims.map((m) => m.text) };
+  } catch (e) {
+    logger.warn("memory.forget failed", e);
+    return { deleted: 0, texts: [] };
+  }
+}
+
+module.exports = { embed, remember, recall, forget, cosine };

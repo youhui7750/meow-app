@@ -1,9 +1,11 @@
 /**
- * Skill: recallMemory (L1) — personalize via the user's prefs + RAG memory.
+ * Skill: recallMemory (L1) — personalize via the user's RAG memory + the one
+ * structured constraint that must be computable.
  *
- * Returns structured preferences (likes/dislikes/maxWalkMinutes) from the
- * user's profile doc, plus the top-k relevant distilled memories retrieved by
- * embedding the query (RAG). `userId` arrives via Genkit `context`.
+ * Tastes (likes/dislikes, places enjoyed) live in free-text RAG memory and come
+ * back as `memories[]`. The profile doc holds only `maxWalkMinutes`, because
+ * that one is a number the agent filters candidates with. `userId` arrives via
+ * Genkit `context`.
  */
 
 const { z } = require("genkit");
@@ -17,16 +19,15 @@ function defineRecallMemory(ai) {
     {
       name: "recallMemory",
       description:
-        "L1 skill. Retrieves the user's food preferences and relevant past " +
-        "memories (RAG). Use this to personalize recommendations.",
+        "L1 skill. Retrieves relevant past memories about the user (RAG) plus " +
+        "their max walk time, to personalize recommendations. Tastes (likes/" +
+        "dislikes, places enjoyed) come back in `memories`.",
       inputSchema: z.object({
         query: z.string().describe("What to recall, e.g. 'dinner near campus'"),
       }),
       outputSchema: z.object({
-        likes: z.array(z.string()),
-        dislikes: z.array(z.string()),
-        maxWalkMinutes: z.number(),
-        source: z.enum(["firestore", "mock"]),
+        // null = no walk-time limit recorded yet; don't filter on it.
+        maxWalkMinutes: z.number().nullable(),
         memories: z.array(
           z.object({
             text: z.string(),
@@ -39,32 +40,20 @@ function defineRecallMemory(ai) {
     async ({ query }, { context }) => {
       const userId = (context && context.userId) || DEMO_USER;
 
-      // RAG recall over the distilled memory collection (best-effort).
+      // RAG recall over the distilled memory collection (best-effort) — this is
+      // where tastes/preferences live now.
       const memories = await memory.recall(ai, { userId, query });
 
-      // Structured prefs from the profile doc, with a mock fallback so the flow
-      // works before any prefs are seeded.
-      const fallback = {
-        likes: ["ramen"],
-        dislikes: ["crowds"],
-        maxWalkMinutes: 20,
-        source: "mock",
-      };
+      // The profile holds only the one computable constraint. No seeded values:
+      // null until the user sets it, so the agent never invents a limit.
+      let maxWalkMinutes = null;
       try {
         const snap = await prefsDoc(userId).get();
-        if (!snap.exists) return { ...fallback, memories };
-        const d = snap.data() || {};
-        return {
-          likes: d.likes || fallback.likes,
-          dislikes: d.dislikes || fallback.dislikes,
-          maxWalkMinutes: d.maxWalkMinutes ?? fallback.maxWalkMinutes,
-          source: "firestore",
-          memories,
-        };
+        if (snap.exists) maxWalkMinutes = snap.data().maxWalkMinutes ?? null;
       } catch (e) {
-        logger.warn("recallMemory prefs read failed; using mock", e);
-        return { ...fallback, memories };
+        logger.warn("recallMemory prefs read failed; no walk limit", e);
       }
+      return { maxWalkMinutes, memories };
     },
   );
 }
