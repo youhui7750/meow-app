@@ -42,6 +42,8 @@ class _FoodButlerAppState extends State<FoodButlerApp> {
     try {
       final sharedText = await _sharedTextChannel.invokeMethod<String>('getSharedText');
       _dispatchSharedText(sharedText);
+    } on MissingPluginException {
+      // Web/desktop builds do not provide the Android share-intent channel.
     } catch (error) {
       debugPrint('Failed to get shared text: $error');
     }

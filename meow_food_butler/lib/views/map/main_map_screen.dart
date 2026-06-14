@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/services/current_map_position.dart';
@@ -282,6 +283,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
 
   String? _selectedExperienceId;
   MapSheetMode _sheetMode = MapSheetMode.myPlaces;
+  MyPlacesSortMode _myPlacesSortMode = MyPlacesSortMode.distance;
 
   bool _canUseLocation = false;
   bool _isLocating = false;
@@ -532,6 +534,52 @@ class _MainMapScreenState extends State<MainMapScreen> {
     return experience.originalURL?.trim().isNotEmpty == true;
   }
 
+  double? _distanceMetersTo(ExperienceCard experience) {
+    final currentLocation = _currentLocation;
+    final latitude = experience.latitude;
+    final longitude = experience.longitude;
+
+    if (currentLocation == null || latitude == null || longitude == null) {
+      return null;
+    }
+
+    return Geolocator.distanceBetween(
+      currentLocation.latitude,
+      currentLocation.longitude,
+      latitude,
+      longitude,
+    );
+  }
+
+  String? _distanceLabelFor(ExperienceCard experience) {
+    final meters = _distanceMetersTo(experience);
+    if (meters == null) return null;
+    if (meters < 1000) return '${meters.round()} m';
+    return '${(meters / 1000).toStringAsFixed(1)} km';
+  }
+
+  List<ExperienceCard> _sortMyPlaces(List<ExperienceCard> experiences) {
+    final items = List<ExperienceCard>.from(experiences);
+
+    if (_myPlacesSortMode == MyPlacesSortMode.recent ||
+        _currentLocation == null) {
+      return items..sort((a, b) => b.createdTime.compareTo(a.createdTime));
+    }
+
+    return items
+      ..sort((a, b) {
+        final aDistance = _distanceMetersTo(a);
+        final bDistance = _distanceMetersTo(b);
+
+        if (aDistance == null && bDistance == null) {
+          return b.createdTime.compareTo(a.createdTime);
+        }
+        if (aDistance == null) return 1;
+        if (bDistance == null) return -1;
+        return aDistance.compareTo(bDistance);
+      });
+  }
+
   Set<Marker> _markersFor(List<ExperienceCard> experiences) {
     return experiences.map((experience) {
       final markerId = _markerIdFor(experience);
@@ -673,7 +721,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
       ],
       groupImportedBySource: true,
     );
-    final myPlaceExperiences = _mapExperiences(savedExperiences);
+    final myPlaceExperiences = _sortMyPlaces(_mapExperiences(savedExperiences));
     final mapExperiences = _sheetMode == MapSheetMode.imported
         ? importedExperiences
         : myPlaceExperiences;
@@ -704,13 +752,21 @@ class _MainMapScreenState extends State<MainMapScreen> {
                 controller: _sheetController,
                 experiences: mapExperiences,
                 mode: _sheetMode,
+                myPlacesSortMode: _myPlacesSortMode,
                 importedCount: importedExperiences.length,
                 myPlacesCount: myPlaceExperiences.length,
                 selectedExperienceId: _selectedExperienceId,
                 markerIdFor: _markerIdFor,
+                distanceLabelFor: _distanceLabelFor,
                 onModeChanged: (mode) {
                   setState(() {
                     _sheetMode = mode;
+                    _selectedExperienceId = null;
+                  });
+                },
+                onSortModeChanged: (mode) {
+                  setState(() {
+                    _myPlacesSortMode = mode;
                     _selectedExperienceId = null;
                   });
                 },
