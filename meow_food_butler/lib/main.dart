@@ -16,6 +16,12 @@ const MethodChannel _sharedTextChannel = MethodChannel('meow_food_butler/shared_
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Lock app orientation to portrait only
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
   runApp(const FoodButlerApp());
 }
 
