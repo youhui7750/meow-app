@@ -284,6 +284,49 @@ class _SessionsDrawer extends StatelessWidget {
 
   final ChatService service;
 
+  Future<void> _confirmDelete(
+    BuildContext context,
+    ChatSession session,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete chat?'),
+          content: Text(
+            'Delete "${session.displayTitle}" and all of its messages?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.tonalIcon(
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await service.deleteSession(session.id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat deleted')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete chat: $error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -333,6 +376,11 @@ class _SessionsDrawer extends StatelessWidget {
                           session.displayTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: 'Delete chat',
+                          onPressed: () => _confirmDelete(context, session),
                         ),
                         selected: selected,
                         selectedTileColor: colorScheme.surfaceContainerHighest,

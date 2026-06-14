@@ -52,4 +52,22 @@ class ChatRepository {
               .toList(),
         );
   }
+
+  /// Delete a chat session and its messages.
+  Future<void> deleteSession(String sessionId) async {
+    final sessionRef = _sessions.doc(sessionId);
+
+    while (true) {
+      final messages = await _messages(sessionId).limit(450).get();
+      if (messages.docs.isEmpty) break;
+
+      final batch = _firestore.batch();
+      for (final message in messages.docs) {
+        batch.delete(message.reference);
+      }
+      await batch.commit();
+    }
+
+    await sessionRef.delete();
+  }
 }

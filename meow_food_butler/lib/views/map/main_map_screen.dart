@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 
-import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/services/current_map_position.dart';
+import 'package:meow_food_butler/services/distance_service.dart';
 import 'package:meow_food_butler/services/shared_url_notifier.dart';
 import 'package:meow_food_butler/view_models/instagram_import_vm.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
@@ -544,19 +544,16 @@ class _MainMapScreenState extends State<MainMapScreen> {
       return null;
     }
 
-    return Geolocator.distanceBetween(
-      currentLocation.latitude,
-      currentLocation.longitude,
-      latitude,
-      longitude,
+    return DistanceService.metersBetween(
+      fromLatitude: currentLocation.latitude,
+      fromLongitude: currentLocation.longitude,
+      toLatitude: latitude,
+      toLongitude: longitude,
     );
   }
 
   String? _distanceLabelFor(ExperienceCard experience) {
-    final meters = _distanceMetersTo(experience);
-    if (meters == null) return null;
-    if (meters < 1000) return '${meters.round()} m';
-    return '${(meters / 1000).toStringAsFixed(1)} km';
+    return DistanceService.formatMeters(_distanceMetersTo(experience));
   }
 
   List<ExperienceCard> _sortMyPlaces(List<ExperienceCard> experiences) {
@@ -680,7 +677,17 @@ class _MainMapScreenState extends State<MainMapScreen> {
     try {
       final position = await getCurrentMapPosition();
 
-      if (position == null) return;
+      if (position == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not get current location. Check browser location permission for this localhost port.',
+            ),
+          ),
+        );
+        return;
+      }
 
       final target = LatLng(position.latitude, position.longitude);
 

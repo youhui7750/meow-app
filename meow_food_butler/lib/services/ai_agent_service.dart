@@ -83,6 +83,25 @@ class ChatService {
     await switchSession(id);
   }
 
+  Future<void> deleteSession(String sessionId) async {
+    final deletingCurrent = _sessionId == sessionId;
+
+    if (deletingCurrent) {
+      await _messagesSub?.cancel();
+      _messagesSub = null;
+      _sessionId = null;
+      _pending = [];
+      _firestore = [];
+      _emit();
+    }
+
+    await _repo.deleteSession(sessionId);
+
+    if (deletingCurrent) {
+      await _initSession();
+    }
+  }
+
   Future<void> _ensureSession() async {
     if (_sessionId == null) await startNewSession();
   }
