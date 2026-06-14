@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/services/current_map_position.dart';
+import 'package:meow_food_butler/services/shared_url_notifier.dart';
 import 'package:meow_food_butler/view_models/instagram_import_vm.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
 import 'package:meow_food_butler/views/map/widgets/import_dialog.dart';
@@ -284,18 +285,58 @@ class _MainMapScreenState extends State<MainMapScreen> {
 
   bool _canUseLocation = false;
   bool _isLocating = false;
+  SharedUrlNotifier? _sharedUrlNotifier;
 
   @override
   void initState() {
     super.initState();
     _loadSpotIcons();
     _moveToCurrentLocation();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notifier = Provider.of<SharedUrlNotifier>(context, listen: false);
+      _sharedUrlNotifier = notifier;
+      notifier.addListener(_onSharedUrlChanged);
+      _handleSharedUrlIfPresent();
+    });
+  }
+
+  void _onSharedUrlChanged() {
+    _handleSharedUrlIfPresent();
   }
 
   @override
   void dispose() {
+    _sharedUrlNotifier?.removeListener(_onSharedUrlChanged);
     _sheetController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSharedUrlIfPresent() async {
+    final notifier = Provider.of<SharedUrlNotifier>(context, listen: false);
+    final sharedUrl = notifier.sharedUrl;
+    if (sharedUrl == null || sharedUrl.trim().isEmpty) return;
+
+    notifier.clearSharedUrl();
+    await _openImportDialog(initialUrl: sharedUrl);
+  }
+
+  Future<void> _openImportDialog({String? initialUrl}) async {
+    final newExperience = await showDialog<ExperienceCard>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => ChangeNotifierProvider(
+        create: (_) => InstagramImportViewModel(),
+        child: ImportInstagramDialog(initialUrl: initialUrl),
+      ),
+    );
+
+    if (newExperience != null && mounted) {
+      setState(() {
+        _sheetMode = MapSheetMode.imported;
+        _importedCandidates.insert(0, newExperience);
+      });
+      await _selectExperience(newExperience);
+    }
   }
 
   void _onMapCreated(GoogleMapController controller) {
@@ -619,25 +660,6 @@ class _MainMapScreenState extends State<MainMapScreen> {
           _isLocating = false;
         });
       }
-    }
-  }
-
-  Future<void> _openImportDialog() async {
-    final newExperience = await showDialog<ExperienceCard>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => ChangeNotifierProvider(
-        create: (_) => InstagramImportViewModel(),
-        child: const ImportInstagramDialog(),
-      ),
-    );
-
-    if (newExperience != null && mounted) {
-      setState(() {
-        _sheetMode = MapSheetMode.imported;
-        _importedCandidates.insert(0, newExperience);
-      });
-      await _selectExperience(newExperience);
     }
   }
 

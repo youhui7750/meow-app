@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import '../../../view_models/instagram_import_vm.dart';
 
 class ImportInstagramDialog extends StatefulWidget {
-  const ImportInstagramDialog({super.key});
+  final String? initialUrl;
+
+  const ImportInstagramDialog({super.key, this.initialUrl});
 
   @override
   State<ImportInstagramDialog> createState() => _ImportInstagramDialogState();
@@ -11,6 +13,34 @@ class ImportInstagramDialog extends StatefulWidget {
 
 class _ImportInstagramDialogState extends State<ImportInstagramDialog> {
   final _controller = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialUrl != null && widget.initialUrl!.trim().isNotEmpty) {
+      _controller.text = widget.initialUrl!.trim();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _autoImportSharedUrl();
+      });
+    }
+  }
+
+  Future<void> _autoImportSharedUrl() async {
+    if (!mounted) return;
+    final url = _controller.text.trim();
+    if (url.isEmpty) return;
+
+    final viewModel = context.read<InstagramImportViewModel>();
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    final newExpCard = await viewModel.pipelineImportAndBuildCard(url);
+    if (!mounted) return;
+    if (newExpCard != null) {
+      navigator.pop(newExpCard);
+      messenger.showSnackBar(const SnackBar(content: Text('餐廳資料自動補全並匯入成功！')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,10 +75,12 @@ class _ImportInstagramDialogState extends State<ImportInstagramDialog> {
         ),
         ElevatedButton(
           onPressed: vm.isLoading ? null : () async {
+            final navigator = Navigator.of(context);
+            final messenger = ScaffoldMessenger.of(context);
             final newExpCard = await context.read<InstagramImportViewModel>().pipelineImportAndBuildCard(_controller.text.trim());
             if (newExpCard != null && mounted) {
-              Navigator.pop(context, newExpCard); // 卡片當結果回傳
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('餐廳資料自動補全並匯入成功！')));
+              navigator.pop(newExpCard); // 卡片當結果回傳
+              messenger.showSnackBar(const SnackBar(content: Text('餐廳資料自動補全並匯入成功！')));
             }
           },
           child: const Text('開始分析'),
