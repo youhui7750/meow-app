@@ -297,7 +297,6 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
     final textTheme = Theme.of(context).textTheme;
     final rating = widget.foodCard.rating ?? 4.5;
 
-    // 計算使用者的個人平均評分
     final visitCount = currentExperiences.length;
     final avgRating = visitCount > 0 
         ? currentExperiences.fold(0.0, (sum, exp) => sum + exp.personalRating) / visitCount 
@@ -326,7 +325,6 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 8),
-                // ✨ Google Stars 與 My Avg 
                 Wrap(
                   spacing: 12,
                   runSpacing: 8,
@@ -364,7 +362,6 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
                         ),
                       ],
                     ),
-                    // 分隔點
                     Text(
                       '•',
                       style: TextStyle(
@@ -412,7 +409,6 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
             ),
           ),
           const SizedBox(width: 16),
-          // 導航按鈕
           Container(
             width: 44,
             height: 44,
@@ -435,7 +431,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.auto_awesome, size: 18, color: colorScheme.primary),
+            Icon(Icons.storefront_outlined, size: 18, color: colorScheme.primary),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -446,7 +442,6 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
           ],
         ),
         const SizedBox(height: 12),
-        // ✨ 可以橫向滑動的營業資訊列
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),

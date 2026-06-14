@@ -29,6 +29,7 @@ class RestaurantListSheet extends StatefulWidget {
   final ValueChanged<MyPlacesSortMode> onSortModeChanged;
   final ValueChanged<ExperienceCard> onExperienceSelected;
   final ValueChanged<ExperienceCard> onExperienceDetailRequested;
+
   const RestaurantListSheet({
     super.key,
     required this.controller,
@@ -192,63 +193,59 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
                   ],
                 ),
                 child: CustomScrollView(
-                        controller: scrollController,
-                        physics: const BouncingScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
-                        slivers: [
-                          SliverPersistentHeader(
-                            pinned: true,
-                            delegate: _SheetHeaderDelegate(
-                              count: widget.experiences.length,
-                              mode: widget.mode,
-                              myPlacesSortMode: widget.myPlacesSortMode,
-                              importedCount: widget.importedCount,
-                              myPlacesCount: widget.myPlacesCount,
-                              onModeChanged: widget.onModeChanged,
-                              onSortModeChanged: widget.onSortModeChanged,
-                              controller: widget.controller,
-                              backgroundColor: colorScheme.surface,
-                            ),
-                          ),
-                          if (widget.experiences.isEmpty)
-                            SliverFillRemaining(
-                              hasScrollBody: false,
-                              child: _EmptyMapSheetContent(mode: widget.mode),
-                            )
-                          else
-                            SliverPadding(
-                              padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-                              sliver: SliverList.separated(
-                                itemCount: widget.experiences.length,
-                                separatorBuilder: (context, index) =>
-                                    const SizedBox(height: 8),
-                                itemBuilder: (context, index) {
-                                  final experience = widget.experiences[index];
-                                  final selected =
-                                      widget.markerIdFor(experience) ==
-                                      widget.selectedExperienceId;
-
-                                  return _MapRestaurantCard(
-                                    experience: experience,
-                                    selected: selected,
-                                    mode: widget.mode,
-                                    distanceLabel:
-                                        widget.distanceLabelFor(experience),
-                                    onTap: () {
-                                      widget.onExperienceDetailRequested(
-                                        experience,
-                                      );
-                                      _showRestaurantDetail(context, experience);
-                                    },
-                                    onLocate: () =>
-                                        widget.onExperienceSelected(experience),
-                                  );
-                                },
-                              ),
-                            ),
-                        ],
+                  controller: scrollController,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  slivers: [
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _SheetHeaderDelegate(
+                        count: widget.experiences.length,
+                        mode: widget.mode,
+                        myPlacesSortMode: widget.myPlacesSortMode,
+                        importedCount: widget.importedCount,
+                        myPlacesCount: widget.myPlacesCount,
+                        onModeChanged: widget.onModeChanged,
+                        onSortModeChanged: widget.onSortModeChanged,
+                        controller: widget.controller,
+                        backgroundColor: colorScheme.surface,
                       ),
+                    ),
+                    if (widget.experiences.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _EmptyMapSheetContent(mode: widget.mode),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                        sliver: SliverList.separated(
+                          itemCount: widget.experiences.length,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final experience = widget.experiences[index];
+                            final selected = widget.markerIdFor(experience) ==
+                                widget.selectedExperienceId;
+
+                            return _MapRestaurantCard(
+                              experience: experience,
+                              selected: selected,
+                              mode: widget.mode,
+                              distanceLabel: widget.distanceLabelFor(experience),
+                              onTap: () {
+                                widget.onExperienceDetailRequested(experience);
+                                _showRestaurantDetail(context, experience);
+                              },
+                              onLocate: () =>
+                                  widget.onExperienceSelected(experience),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
               ),
             );
           },
@@ -263,11 +260,11 @@ class _MapSheetScrollBehavior extends MaterialScrollBehavior {
 
   @override
   Set<PointerDeviceKind> get dragDevices => {
-    PointerDeviceKind.touch,
-    PointerDeviceKind.mouse,
-    PointerDeviceKind.trackpad,
-    PointerDeviceKind.stylus,
-  };
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+      };
 }
 
 class _SheetHeaderDelegate extends SliverPersistentHeaderDelegate {
@@ -681,6 +678,8 @@ class _MapRestaurantCard extends StatelessWidget {
     final imageUrl = experience.photoUrls.isEmpty
         ? null
         : experience.photoUrls.first;
+        
+    final bool isOpen = true;
 
     return AnimatedScale(
       scale: selected ? 1.006 : 1.0,
@@ -722,46 +721,67 @@ class _MapRestaurantCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 撌阡???嚗歲閰喟敦鞈?
-                  InkWell(
-                    onTap: onTap,
-                    borderRadius: BorderRadius.circular(12),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: imageUrl == null
-                          ? Container(
-                              width: 58,
-                              height: 58,
-                              color: colorScheme.primary,
-                              child: Icon(
-                                Icons.restaurant,
-                                color: colorScheme.onPrimary,
-                              ),
-                            )
-                          : Image.network(
-                              imageUrl,
-                              width: 58,
-                              height: 58,
-                              fit: BoxFit.cover,
-                              webHtmlElementStrategy:
-                                  WebHtmlElementStrategy.prefer,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                width: 58,
-                                height: 58,
-                                color: colorScheme.primary,
-                                child: Icon(
-                                  Icons.restaurant,
-                                  color: colorScheme.onPrimary,
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        onTap: onTap,
+                        borderRadius: BorderRadius.circular(12),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: imageUrl == null
+                              ? Container(
+                                  width: 58,
+                                  height: 58,
+                                  color: colorScheme.primary,
+                                  child: Icon(
+                                    Icons.restaurant,
+                                    color: colorScheme.onPrimary,
+                                  ),
+                                )
+                              : Image.network(
+                                  imageUrl,
+                                  width: 58,
+                                  height: 58,
+                                  fit: BoxFit.cover,
+                                  webHtmlElementStrategy:
+                                      WebHtmlElementStrategy.prefer,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Container(
+                                    width: 58,
+                                    height: 58,
+                                    color: colorScheme.primary,
+                                    child: Icon(
+                                      Icons.restaurant,
+                                      color: colorScheme.onPrimary,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                    ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isOpen 
+                              ? Colors.green.withOpacity(0.15) 
+                              : Colors.red.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          isOpen ? '營業中' : '休息中',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: isOpen ? Colors.green.shade700 : Colors.red.shade700,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(width: 10),
 
-                  // 銝剝???嚗歲閰喟敦鞈?
                   Expanded(
                     child: InkWell(
                       onTap: onTap,
@@ -882,7 +902,6 @@ class _MapRestaurantCard extends StatelessWidget {
                     ),
                   ),
 
-                  // ?喲? icon嚗摰?
                   IconButton(
                     onPressed: onLocate,
                     icon: Icon(
