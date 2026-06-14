@@ -10,7 +10,15 @@ const logger = require("firebase-functions/logger");
 
 const { haversineMeters, walkMinutes } = require("../../geo");
 
-/** Google Places (v1) Text Search, biased around the user. Node 24 has fetch. */
+/**
+ * Google Places (v1) Text Search around the user. Node 24 has fetch.
+ *
+ * `rankPreference: DISTANCE` makes Places rank by proximity rather than text
+ * relevance, so a famous-but-far spot in the same district doesn't outrank a
+ * closer match. We still keep `locationBias` (Text Search circles are a bias,
+ * not a hard restriction) and enforce real nearness by post-filtering on the
+ * distance we compute ourselves.
+ */
 async function searchText({ query, latitude, longitude, apiKey, radius = 1500 }) {
   const resp = await fetch("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
@@ -23,6 +31,7 @@ async function searchText({ query, latitude, longitude, apiKey, radius = 1500 })
     body: JSON.stringify({
       textQuery: query,
       maxResultCount: 10,
+      rankPreference: "DISTANCE",
       locationBias: {
         circle: { center: { latitude, longitude }, radius },
       },
@@ -99,13 +108,15 @@ function defineSearchSpots(ai, { placesApiKey = "" } = {}) {
       }
 
       try {
+        const radius = 1500;
         const places = await searchText({
           query: cuisine,
           latitude: loc.latitude,
           longitude: loc.longitude,
           apiKey: placesApiKey,
+          radius,
         });
-        const candidates = places
+        const ranked = places
           .map((p) => {
             const here = p.location && {
               latitude: p.location.latitude,
@@ -127,12 +138,28 @@ function defineSearchSpots(ai, { placesApiKey = "" } = {}) {
           })
           .sort((a, b) => (a.distanceMeters ?? 1e12) - (b.distanceMeters ?? 1e12));
 
+        // Enforce real nearness: keep only spots within the search radius. If the
+        // bias still let only far results through, return the single closest with
+        // a note so the agent can be honest that it's farther than usual.
+        const near = ranked.filter(
+          (c) => c.distanceMeters != null && c.distanceMeters <= radius,
+        );
+        if (near.length) {
+          return { locationKnown: true, candidates: near, note: "Real results, closest first." };
+        }
+        if (ranked.length) {
+          return {
+            locationKnown: true,
+            candidates: ranked.slice(0, 1),
+            note:
+              `Nothing matching "${cuisine}" within ${radius}m. The closest is ` +
+              `${ranked[0].distanceMeters}m away — tell the user it's farther than usual, don't pretend it's close.`,
+          };
+        }
         return {
           locationKnown: true,
-          candidates,
-          note: candidates.length
-            ? "Real results, closest first."
-            : `No spots matching "${cuisine}" nearby — tell the user honestly.`,
+          candidates: [],
+          note: `No spots matching "${cuisine}" nearby — tell the user honestly.`,
         };
       } catch (e) {
         logger.warn("searchSpots Places lookup failed", e);
