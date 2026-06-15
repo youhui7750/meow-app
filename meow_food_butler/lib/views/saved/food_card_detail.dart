@@ -270,6 +270,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
   String _toHighResolutionGooglePhotoUrl(String rawUrl) {
     final url = rawUrl.trim();
     if (url.isEmpty) return url;
+    if (!_isGooglePhotoUrl(url)) return url;
 
     const targetSize = '=w3200-h2000-k-no';
     final sizePattern = RegExp(r'=w\d+-h\d+(?:-[^?&]*)?');
@@ -281,6 +282,14 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
     if (queryStart == -1) return '$url$targetSize';
 
     return '${url.substring(0, queryStart)}$targetSize${url.substring(queryStart)}';
+  }
+
+  bool _isGooglePhotoUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('googleusercontent.com') ||
+        lower.contains('lh3.google') ||
+        lower.contains('googleapis.com/maps') ||
+        lower.contains('google.com/maps');
   }
 
   Widget _buildPhotoFallback(ColorScheme colorScheme) {
@@ -554,7 +563,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
     final textTheme = Theme.of(context).textTheme;
     final facts = _headerFacts(colorScheme);
     final hasHours =
-        widget.foodCard.workingHours != null || widget.foodCard.popularTimes != null;
+        _todayHoursLabel() != null || _popularTimeBarsForToday().isNotEmpty;
     final hasDescription = widget.foodCard.description?.trim().isNotEmpty == true;
 
     return Column(

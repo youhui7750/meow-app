@@ -47,7 +47,7 @@ class ExperienceCard {
   Timestamp get createdTime => _createdTime;
 
   /// Factory constructor to parse Cloud Firestore documents smoothly
-  factory ExperienceCard.fromMap(Map<String, dynamic> map, String id) {
+  factory ExperienceCard.fromMap(Map<String, dynamic> map, [String? id]) {
     return ExperienceCard(
       id: id,
       foodCardId: map['foodCardId'] as String?,

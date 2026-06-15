@@ -86,6 +86,16 @@ class ExperienceRepository {
     });
   }
 
+  /// Link an experience to the restaurant/FoodCard doc that was resolved for it,
+  /// so the next detail open is a Firestore read instead of another Outscraper
+  /// fetch. No-op write is harmless; callers guard against relinking.
+  Future<void> linkFoodCard(String experienceId, String foodCardId) async {
+    await _collection.doc(experienceId).update({
+      'foodCardId': foodCardId,
+      'updatedTime': FieldValue.serverTimestamp(),
+    });
+  }
+
   Future<void> deleteExperience(ExperienceCard experience) async {
     for (final path in experience.photoPaths) {
       try {

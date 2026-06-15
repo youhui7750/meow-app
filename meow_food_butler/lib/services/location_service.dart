@@ -57,11 +57,14 @@ class LocationService {
       }
     }
 
-    // Live fix. On web this returns an approximate position, which is fine.
+    // Live fix. On web a coarse network fix is fine and avoids code=3 timeouts
+    // that a GPS-grade (high accuracy) request triggers in desktop browsers.
     try {
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      ).timeout(const Duration(seconds: 12));
+        locationSettings: LocationSettings(
+          accuracy: kIsWeb ? LocationAccuracy.medium : LocationAccuracy.high,
+        ),
+      ).timeout(const Duration(seconds: 17));
       return (latitude: pos.latitude, longitude: pos.longitude);
     } catch (e) {
       debugPrint('LocationService: getCurrentPosition failed: $e');

@@ -2,8 +2,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/models/food_card.dart';
+import 'package:meow_food_butler/repositories/experience_repository.dart';
 import 'package:meow_food_butler/repositories/restaurant_repository.dart';
-import 'package:meow_food_butler/services/outscraper_service.dart';
+import 'package:meow_food_butler/services/restaurant_lookup_service.dart';
 import 'package:meow_food_butler/views/saved/food_card_detail.dart';
 import 'package:meow_food_butler/views/saved/widgets/experience_photo.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
@@ -166,10 +167,13 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
         return _foodCardFromExperience(experience);
       }
 
-      // Not in Firestore — fall back to Outscraper.
+      // Not in Firestore — fall back to Outscraper ONCE: persist the restaurant
+      // and link it back to the experience so the next open is a Firestore read,
+      // never another Outscraper call.
       final fetchedRestaurant = await _fetchRestaurantForExperience(experience);
       if (fetchedRestaurant != null) {
-        await repository.saveRestaurant(fetchedRestaurant);
+        final savedId = await repository.saveRestaurant(fetchedRestaurant);
+        await _linkExperienceToRestaurant(experience, savedId);
         return _mergeRestaurantWithExperience(fetchedRestaurant, experience);
       }
     } catch (_) {
@@ -178,43 +182,44 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
     return _foodCardFromExperience(experience);
   }
 
+  /// Persist the experience→restaurant link, but only for a real saved
+  /// experience doc that isn't linked yet. Transient import candidates (no id)
+  /// and synthetic restaurant-derived cards ('restaurant-…', already carrying a
+  /// foodCardId) are skipped — they resolve via the restaurants stream instead.
+  Future<void> _linkExperienceToRestaurant(
+    ExperienceCard experience,
+    String foodCardId,
+  ) async {
+    final id = experience.id;
+    if (id == null || id.isEmpty || id.startsWith('restaurant-')) return;
+    if (experience.foodCardId != null && experience.foodCardId!.isNotEmpty) return;
+    if (foodCardId.isEmpty) return;
+    try {
+      await ExperienceRepository().linkFoodCard(id, foodCardId);
+    } catch (_) {
+      // Non-fatal: the card still renders; we may just refetch next time.
+    }
+  }
+
   Future<FoodCard?> _fetchRestaurantForExperience(
     ExperienceCard experience,
   ) async {
+    // Prefer the exact place_id the user picked at creation; fall back to the
+    // name only when there's no id. The backend (fetchRestaurant) handles detail
+    // + menu photos + reviews and the photo merge server-side.
+    final placeId = experience.placeId?.trim();
     final query = experience.placeTitle?.trim();
-    if (query == null || query.isEmpty) return null;
-
-    final service = OutscraperService();
-    final detail = await service.fetchRestaurantDetail(query);
-    if (detail == null) return null;
-
-    final photoUrls = _mergePhotoUrls(
-      detail.photoUrls,
-      (await service.fetchPhotos(query, tag: 'menu', photosLimit: 5))
-          .map((photoMap) => photoMap['url'] as String? ?? '')
-          .where((url) => url.isNotEmpty)
-          .toList(),
-    );
-    final reviews = await service.fetchReviews(query, limit: 3);
-    return detail.copyForImport(
-      originalURL: experience.originalURL,
-      visited: experience.isDone,
-      tags: experience.personalTags,
-      photoUrls: photoUrls,
-      reviewSnippets: reviews,
-    );
-  }
-
-  List<String> _mergePhotoUrls(List<String> primary, List<String> secondary) {
-    final seen = <String>{};
-    final urls = <String>[];
-    for (final url in [...primary, ...secondary]) {
-      final trimmed = url.trim();
-      if (trimmed.isEmpty || seen.contains(trimmed)) continue;
-      seen.add(trimmed);
-      urls.add(trimmed);
+    if ((placeId == null || placeId.isEmpty) && (query == null || query.isEmpty)) {
+      return null;
     }
-    return urls.take(5).toList();
+
+    return RestaurantLookupService().fetch(
+      placeId: placeId,
+      query: query,
+      originalURL: experience.originalURL,
+      tags: experience.personalTags,
+      visited: experience.isDone,
+    );
   }
 
   FoodCard _foodCardFromExperience(ExperienceCard experience) {

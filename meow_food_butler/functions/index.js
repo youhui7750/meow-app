@@ -28,6 +28,7 @@ const { getGeminiKeys } = require("./agent/keys");
 const { runButlerFlow } = require("./agent/flow");
 const memory = require("./memory/store");
 const sessions = require("./sessions/store");
+const integrations = require("./integrations");
 
 setGlobalOptions({ maxInstances: 10, region: REGION });
 
@@ -134,18 +135,21 @@ exports.checkApiKeys = onCall(
     const missing = [];
     if (!(await getGeminiKeys()).length) missing.push("GEMINI_API_KEY");
     if (!resolvePlacesApiKey()) missing.push("PLACES_API_KEY");
+    // Integration keys live in Firestore config/* docs (redeploy-free).
+    if (!(await integrations.getApifyToken())) missing.push("APIFY_TOKEN");
+    if (!(await integrations.getOutscraperKey())) missing.push("OUTSCRAPER_API_KEY");
 
     if (missing.length === 0) {
       return { ok: true, missing, reply: null };
     }
 
-    const effects = missing
-      .map((k) =>
-        k === "GEMINI_API_KEY"
-          ? "I can't think or chat without GEMINI_API_KEY"
-          : "I can't name nearby places without PLACES_API_KEY",
-      )
-      .join("; ");
+    const effectFor = {
+      GEMINI_API_KEY: "I can't think or chat without GEMINI_API_KEY",
+      PLACES_API_KEY: "I can't name nearby places without PLACES_API_KEY",
+      APIFY_TOKEN: "I can't read Instagram posts without APIFY_TOKEN",
+      OUTSCRAPER_API_KEY: "I can't look up restaurant details without OUTSCRAPER_API_KEY",
+    };
+    const effects = missing.map((k) => effectFor[k] || `I'm missing ${k}`).join("; ");
     const reply =
       `😿 Heads up: ${missing.join(" and ")} ` +
       `${missing.length > 1 ? "are" : "is"} not configured, so ${effects}. ` +
@@ -154,5 +158,80 @@ exports.checkApiKeys = onCall(
 
     logger.warn("checkApiKeys: missing keys", { missing });
     return { ok: false, missing, reply };
+  },
+);
+
+/**
+ * Callable: `importInstagram({ url })` -> { ok, code, experience?, restaurant? }.
+ *
+ * Runs the full IG import pipeline server-side (Apify scrape -> AI name extraction
+ * -> Outscraper enrichment) and returns `ExperienceCard` / `FoodCard` maps the
+ * client deserializes directly. Bound to `geminiApiKey` for the extraction step;
+ * the Apify/Outscraper keys are read live from Firestore config/* docs.
+ *
+ * Long-running (Apify polls), so the default 60 s timeout is raised.
+ */
+exports.importInstagram = onCall(
+  { secrets: [geminiApiKey], timeoutSeconds: 300, memory: "512MiB" },
+  async (request) => {
+    const url = (request.data || {}).url;
+    if (typeof url !== "string" || url.trim() === "") {
+      throw new HttpsError("invalid-argument", "A non-empty `url` is required.");
+    }
+    logger.info("importInstagram called", { url });
+    const result = await integrations.importInstagram(url);
+    logger.info("importInstagram result", { code: result.code, ok: result.ok });
+    return result;
+  },
+);
+
+/**
+ * Callable: `fetchRestaurant({ placeId?, query?, originalURL?, tags?, visited? })`
+ *   -> { ok, code, restaurant? }.
+ *
+ * Single-place Google Maps lookup via Outscraper. Prefer `placeId` (resolves the
+ * EXACT place); falls back to a `query` string. Detail + menu photos + reviews are
+ * fetched in parallel and merged into one `FoodCard` map. The optional overlay
+ * fields mirror `FoodCard.copyForImport` for callers enriching a saved place.
+ */
+exports.fetchRestaurant = onCall(
+  { timeoutSeconds: 120, memory: "512MiB" },
+  async (request) => {
+    const data = request.data || {};
+    const lookup =
+      (typeof data.placeId === "string" && data.placeId.trim()) ||
+      (typeof data.query === "string" && data.query.trim()) ||
+      "";
+    if (!lookup) {
+      throw new HttpsError("invalid-argument", "A `placeId` or `query` is required.");
+    }
+
+    const [detail, menuPhotos, reviewSnippets] = await Promise.all([
+      integrations.fetchRestaurantDetail(lookup),
+      integrations.fetchPhotos(lookup, "menu", 5),
+      integrations.fetchReviews(lookup, 3),
+    ]);
+    if (!detail) {
+      return { ok: false, code: "not-found", reply: "😿 I couldn't find that place on the map." };
+    }
+
+    const seen = new Set();
+    const photoUrls = [...(detail.photoUrls || []), ...menuPhotos]
+      .map((u) => (u || "").trim())
+      .filter((u) => u && !seen.has(u) && seen.add(u))
+      .slice(0, 5);
+
+    const restaurant = {
+      ...detail,
+      photoUrls,
+      reviewSnippets,
+      originalURL:
+        typeof data.originalURL === "string" ? data.originalURL : detail.originalURL || null,
+      visited: typeof data.visited === "boolean" ? data.visited : false,
+      tags: Array.isArray(data.tags) ? data.tags : [],
+    };
+
+    logger.info("fetchRestaurant result", { hasDetail: true, photos: photoUrls.length });
+    return { ok: true, code: "ok", restaurant };
   },
 );

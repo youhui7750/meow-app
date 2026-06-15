@@ -327,36 +327,3 @@ class ChatService {
     _out.close();
   }
 }
-
-
-/// This is AI Agent Service
-/// 目前用來抓取地點
-/// -- Albert Hsueh, 06/13 13:37
-class AiAgentService {
-  // 假設你使用的是 OpenAI / Gemini API
-  Future<String?> extractRestaurantName(String caption, String location) async {
-    final prompt = """
-    你是一個美食達人，請從以下 Instagram 貼文內文與打卡地標中，精準提取出「餐廳名稱」與「所在城市或地區」。
-    打卡地標: $location
-    內文: $caption
-
-    請只回傳最有可能的餐廳名稱與地區（例如："一蘭拉麵 台北信義店" 或 "鼎泰豐 101"），不需要任何額外的解釋或標點符號。如果完全找不到，請回傳 "UNKNOWN"。
-    """;
-
-    // 這裡呼叫你的 LLM API (例如 Google GenAI 或 OpenAI)
-    // String response = await callLLM(prompt);
-    // return response == "UNKNOWN" ? null : response;
-
-    print("[DEBUG] Caption: $caption");
-    print("[DEBUG] Location: $location");
-
-    // 💡 臨時測試：如果內文包含 "圍爐烤肉"，就直接回傳正確的搜尋關鍵字
-    if (caption.contains("圍爐烤肉")) {
-      return "圍爐烤肉 台北市萬華區"; // 這樣 Outscraper 就能精準在地圖上找到了！
-    }
-    
-    // 💡 暫時 Mock 測試用：
-    await Future.delayed(const Duration(seconds: 1));
-    return "Draft Cafe 台北"; 
-  }
-}
