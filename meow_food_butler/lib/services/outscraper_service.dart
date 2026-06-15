@@ -86,12 +86,15 @@ class OutscraperService {
       final name = _readString(placeData, "name") ?? query.trim();
       final latitude = _readDouble(placeData, "latitude");
       final longitude = _readDouble(placeData, "longitude");
-      final photoUrl = _readString(placeData, "photo");
+      final photoUrl = _toHighResolutionGooglePhotoUrl(
+        _readString(placeData, "photo"),
+      );
 
       return FoodCard(
         id: _readString(placeData, "place_id") ??
             _readString(placeData, "google_id") ??
             _readString(placeData, "cid"),
+        googleMapsUrl: _readString(placeData, "location_link"),
         formattedAddress: _readString(placeData, "address"),
         rating: _readDouble(placeData, "rating"),
         reviews: _readInt(placeData, "reviews"),
@@ -230,7 +233,10 @@ class OutscraperService {
 
       // 整理並清洗照片欄位
       return photosRaw.map<Map<String, dynamic>>((p) => {
-        "url": p["photo_url_large"] ?? p["photo_url"] ?? "",
+        "url": _toHighResolutionGooglePhotoUrl(
+              (p["photo_url_large"] ?? p["photo_url"])?.toString(),
+            ) ??
+            "",
         "tag": p["tag"] ?? "",
         "date": p["photo_date"] ?? "",
         "author": p["photo_source_name"] ?? "",
@@ -297,5 +303,21 @@ class OutscraperService {
           .toList();
     }
     return const [];
+  }
+
+  String? _toHighResolutionGooglePhotoUrl(String? rawUrl) {
+    final url = rawUrl?.trim();
+    if (url == null || url.isEmpty) return null;
+
+    const targetSize = '=w3200-h2000-k-no';
+    final sizePattern = RegExp(r'=w\d+-h\d+(?:-[^?&]*)?');
+    if (sizePattern.hasMatch(url)) {
+      return url.replaceFirst(sizePattern, targetSize);
+    }
+
+    final queryStart = url.indexOf('?');
+    if (queryStart == -1) return '$url$targetSize';
+
+    return '${url.substring(0, queryStart)}$targetSize${url.substring(queryStart)}';
   }
 }

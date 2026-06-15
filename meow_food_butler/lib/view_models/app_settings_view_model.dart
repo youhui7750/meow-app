@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-enum AppLanguage { traditionalChinese, english }
-
 class AppTagGroup {
   final String label;
   final List<String> tags;
@@ -21,8 +19,8 @@ class AppSettingsViewModel extends ChangeNotifier {
       '義式',
       '咖啡廳',
       '甜點',
+      '拉麵',
       '火鍋',
-      '小吃',
     ],
     '價格': [
       '平價',
@@ -49,61 +47,39 @@ class AppSettingsViewModel extends ChangeNotifier {
     ],
   };
 
-  AppLanguage _language = AppLanguage.traditionalChinese;
-  bool _notificationsEnabled = true;
-  Map<String, List<String>>? _tagGroups = _defaultTagGroups;
+  Map<String, List<String>> _tagGroups = _defaultTagGroups;
 
-  Map<String, List<String>> get _resolvedTagGroups {
-    return _tagGroups ??= _defaultTagGroups;
-  }
-
-  AppLanguage get language => _language;
-  bool get notificationsEnabled => _notificationsEnabled;
-  List<String> get tagGroupLabels => List.unmodifiable(_resolvedTagGroups.keys);
+  List<String> get tagGroupLabels => List.unmodifiable(_tagGroups.keys);
 
   List<String> tagsForGroup(String label) {
-    return List.unmodifiable(_resolvedTagGroups[label] ?? const []);
+    return List.unmodifiable(_tagGroups[label] ?? const []);
   }
 
   List<AppTagGroup> get quickTagGroups {
-    return _resolvedTagGroups.entries
+    return _tagGroups.entries
         .map((entry) => AppTagGroup(label: entry.key, tags: entry.value))
         .toList();
   }
 
-  void setLanguage(AppLanguage language) {
-    if (_language == language) return;
-    _language = language;
-    notifyListeners();
-  }
-
-  void setNotificationsEnabled(bool enabled) {
-    if (_notificationsEnabled == enabled) return;
-    _notificationsEnabled = enabled;
-    notifyListeners();
-  }
-
   void addTag(String groupLabel, String rawTag) {
     final tag = _normalizeTag(rawTag);
-    final currentGroups = _resolvedTagGroups;
-    final currentTags = currentGroups[groupLabel] ?? const <String>[];
+    final currentTags = _tagGroups[groupLabel] ?? const <String>[];
     if (tag.isEmpty || currentTags.contains(tag)) return;
 
     _tagGroups = {
-      ...currentGroups,
+      ..._tagGroups,
       groupLabel: [...currentTags, tag],
     };
     notifyListeners();
   }
 
   void removeTag(String groupLabel, String tag) {
-    final currentGroups = _resolvedTagGroups;
-    final currentTags = currentGroups[groupLabel] ?? const <String>[];
+    final currentTags = _tagGroups[groupLabel] ?? const <String>[];
     final nextTags = currentTags.where((item) => item != tag).toList();
     if (nextTags.length == currentTags.length) return;
 
     _tagGroups = {
-      ...currentGroups,
+      ..._tagGroups,
       groupLabel: nextTags,
     };
     notifyListeners();

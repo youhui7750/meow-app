@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 
+import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/models/food_card.dart';
@@ -12,7 +13,7 @@ import 'package:meow_food_butler/view_models/instagram_import_vm.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
 import 'package:meow_food_butler/views/map/widgets/import_dialog.dart';
 import 'package:meow_food_butler/views/map/widgets/restaurant_list_sheet.dart';
-import 'package:meow_food_butler/views/saved/saved_screen.dart';
+import 'package:meow_food_butler/views/map/settings_screen.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:provider/provider.dart';
 
@@ -553,6 +554,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
       latitude: restaurant.location?.latitude,
       longitude: restaurant.location?.longitude,
       originalURL: restaurant.originalURL,
+      googleMapsUrl: restaurant.googleMapsUrl,
       photoPaths: restaurant.photoPaths,
       photoUrls: restaurant.photoUrls,
       personalTags: restaurant.tags,
@@ -813,6 +815,23 @@ class _MainMapScreenState extends State<MainMapScreen> {
                 style: _mapStyle,
                 webGestureHandling: WebGestureHandling.greedy,
               ),
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 16,
+                right: 16,
+                child: PointerInterceptor(
+                  child: FloatingActionButton.small(
+                    heroTag: 'map-settings',
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const SettingsScreen(),
+                        ),
+                      );
+                    },
+                    child: const Icon(Icons.settings_outlined),
+                  ),
+                ),
+              ),
               RestaurantListSheet(
                 controller: _sheetController,
                 experiences: mapExperiences,
@@ -839,14 +858,11 @@ class _MainMapScreenState extends State<MainMapScreen> {
                   _selectExperience(experience, showInfoWindow: false);
                 },
                 onExperienceDetailRequested: (experience) {
-                  _selectExperience(experience, showInfoWindow: false);
+                  // Opening the card detail should not move the map.
                 },
                 onVisitsTapped: (placeTitle) {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => SavedScreen(initialSearchQuery: placeTitle),
-                    ),
-                  );
+                  final query = Uri.encodeComponent(placeTitle);
+                  context.go('/saved?q=$query');
                 },
               ),
               AnimatedBuilder(

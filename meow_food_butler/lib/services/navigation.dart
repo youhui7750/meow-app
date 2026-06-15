@@ -64,8 +64,10 @@ class AppNavigation {
             routes: [
               GoRoute(
                 path: savedPath,
-                pageBuilder: (context, state) => const NoTransitionPage(
-                  child: SavedScreen(),
+                pageBuilder: (context, state) => NoTransitionPage(
+                  child: SavedScreen(
+                    initialSearchQuery: state.uri.queryParameters['q'],
+                  ),
                 ),
               ),
             ],

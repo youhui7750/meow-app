@@ -12,6 +12,7 @@ class ExperienceCard {
   final double? latitude;
   final double? longitude;
   final String? originalURL; // Source Instagram link (if imported)
+  final String? googleMapsUrl; // External Google Maps place URL.
   final List<String> photoPaths; // Firebase Storage paths for meal photos
   final List<String> photoUrls; // Download URLs cached for display
   final List<String>
@@ -32,6 +33,7 @@ class ExperienceCard {
     this.latitude,
     this.longitude,
     this.originalURL,
+    this.googleMapsUrl,
     this.photoPaths = const [],
     this.photoUrls = const [],
     required this.personalTags,
@@ -60,6 +62,7 @@ class ExperienceCard {
           _readLocationDouble(map, 'longitude') ??
           _readLocationDouble(map, 'lng'),
       originalURL: map['originalURL'] as String?,
+      googleMapsUrl: map['googleMapsUrl'] as String?,
       photoPaths: map['photoPaths'] != null
           ? List<String>.from(map['photoPaths'] as List<dynamic>)
           : const [],
@@ -95,6 +98,7 @@ class ExperienceCard {
               'longitude': longitude,
             },
       'originalURL': originalURL,
+      'googleMapsUrl': googleMapsUrl,
       'photoPaths': photoPaths,
       'photoUrls': photoUrls,
       'personalTags': personalTags,
@@ -115,6 +119,7 @@ class ExperienceCard {
     double? latitude,
     double? longitude,
     String? originalURL,
+    String? googleMapsUrl,
     List<String>? photoPaths,
     List<String>? photoUrls,
     List<String>? personalTags,
@@ -133,6 +138,7 @@ class ExperienceCard {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       originalURL: originalURL ?? this.originalURL,
+      googleMapsUrl: googleMapsUrl ?? this.googleMapsUrl,
       photoPaths: photoPaths ?? this.photoPaths,
       photoUrls: photoUrls ?? this.photoUrls,
       personalTags: personalTags ?? this.personalTags,
@@ -157,6 +163,7 @@ class ExperienceCard {
         other.latitude == latitude &&
         other.longitude == longitude &&
         other.originalURL == originalURL &&
+        other.googleMapsUrl == googleMapsUrl &&
         listEquals(other.photoPaths, photoPaths) &&
         listEquals(other.photoUrls, photoUrls) &&
         listEquals(other.personalTags, personalTags) &&
@@ -178,6 +185,7 @@ class ExperienceCard {
       latitude,
       longitude,
       originalURL,
+      googleMapsUrl,
       Object.hashAll(photoPaths),
       Object.hashAll(photoUrls),
       Object.hashAll(personalTags),

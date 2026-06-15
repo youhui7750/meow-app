@@ -221,6 +221,7 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
     return FoodCard(
       id: experience.foodCardId ?? experience.placeId,
       originalURL: experience.originalURL,
+      googleMapsUrl: experience.googleMapsUrl,
       formattedAddress: experience.placeAddress,
       rating: experience.personalRating > 0 ? experience.personalRating : null,
       tags: experience.personalTags,
@@ -250,6 +251,7 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
     return FoodCard(
       id: restaurant.id ?? fallback.id,
       originalURL: restaurant.originalURL ?? fallback.originalURL,
+      googleMapsUrl: restaurant.googleMapsUrl ?? fallback.googleMapsUrl,
       formattedAddress: restaurant.formattedAddress ?? fallback.formattedAddress,
       rating: restaurant.rating ?? fallback.rating,
       reviews: restaurant.reviews,
@@ -827,7 +829,7 @@ class _MapRestaurantCard extends StatelessWidget {
               : colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
-            onTap: onLocate,
+            onTap: onTap,
             borderRadius: BorderRadius.circular(16),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),

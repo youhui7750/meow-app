@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart'; // Necessary for JSON datatype integra
 class FoodCard {
   final String? id; // Restaurant document id, usually Google Place ID when available.
   final String? originalURL; // The parsed source (Instagram, Google Maps, ...)
+  final String? googleMapsUrl; // External Google Maps place URL.
   final String? formattedAddress; // Google/Outscraper full address.
   final double? rating; // Public restaurant rating.
   final int? reviews; // Public review count.
@@ -32,6 +33,7 @@ class FoodCard {
   FoodCard({
     this.id,
     this.originalURL,
+    this.googleMapsUrl,
     this.formattedAddress,
     this.rating,
     this.reviews,
@@ -62,6 +64,9 @@ class FoodCard {
     return FoodCard(
       id: id ?? (map['id'] as String?) ?? (map['placeId'] as String?),
       originalURL: map['originalURL'] as String?,
+      googleMapsUrl: map['googleMapsUrl'] as String? ??
+          map['locationLink'] as String? ??
+          map['location_link'] as String?,
       formattedAddress:
           map['formattedAddress'] as String? ?? map['placeAddress'] as String?,
       // API numbers can arrive as int or double; safely cast to double
@@ -111,6 +116,7 @@ class FoodCard {
       'placeTitle': primaryTitle,
       'placeAddress': formattedAddress,
       'originalURL': originalURL,
+      'googleMapsUrl': googleMapsUrl,
       'formattedAddress': formattedAddress,
       'rating': rating,
       'reviews': reviews,
@@ -151,6 +157,7 @@ class FoodCard {
 
   FoodCard copyForImport({
     String? originalURL,
+    String? googleMapsUrl,
     bool? visited,
     List<String>? tags,
     List<String>? photoUrls,
@@ -159,6 +166,7 @@ class FoodCard {
     return FoodCard(
       id: id,
       originalURL: originalURL ?? this.originalURL,
+      googleMapsUrl: googleMapsUrl ?? this.googleMapsUrl,
       formattedAddress: formattedAddress,
       rating: rating,
       reviews: reviews,
@@ -193,6 +201,7 @@ class FoodCard {
     return other is FoodCard &&
         other.id == id &&
         other.originalURL == originalURL &&
+        other.googleMapsUrl == googleMapsUrl &&
         other.formattedAddress == formattedAddress &&
         other.rating == rating &&
         other.reviews == reviews &&

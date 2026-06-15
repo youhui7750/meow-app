@@ -115,12 +115,20 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
       }
     }
 
-    final photoPages = widget.foodCard.photoUrls
+    final photoUrls = widget.foodCard.photoUrls
         .take(5)
-        .map((url) => _buildRestaurantPhotoUrlPage(
+        .map(_toHighResolutionGooglePhotoUrl)
+        .toList();
+
+    final photoPages = photoUrls
+        .asMap()
+        .entries
+        .map((entry) => _buildRestaurantPhotoUrlPage(
               colorScheme,
-              url,
+              entry.value,
               heroExperience,
+              photoUrls,
+              entry.key,
             ))
         .toList();
 
@@ -215,24 +223,64 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
     ColorScheme colorScheme,
     String url,
     ExperienceCard? heroExperience,
+    List<String> photoUrls,
+    int initialIndex,
   ) {
-    return Image.network(
-      key: ValueKey(url),
-      url,
-      fit: BoxFit.cover,
-      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-      errorBuilder: (context, error, stackTrace) {
-        if (heroExperience != null) {
-          return ExperiencePhoto(
-            experience: heroExperience,
-            width: MediaQuery.sizeOf(context).width,
-            height: 220,
-            borderRadius: 0,
-          );
-        }
-        return _buildPhotoFallback(colorScheme);
-      },
+    return GestureDetector(
+      onTap: () => _openPhotoPreview(photoUrls, initialIndex),
+      child: Image.network(
+        key: ValueKey(url),
+        url,
+        fit: BoxFit.cover,
+        webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+        errorBuilder: (context, error, stackTrace) {
+          if (heroExperience != null) {
+            return ExperiencePhoto(
+              experience: heroExperience,
+              width: MediaQuery.sizeOf(context).width,
+              height: 220,
+              borderRadius: 0,
+            );
+          }
+          return _buildPhotoFallback(colorScheme);
+        },
+      ),
     );
+  }
+
+  void _openPhotoPreview(List<String> photoUrls, int initialIndex) {
+    if (photoUrls.isEmpty) return;
+
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: true,
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return _FoodPhotoPreviewScreen(
+            photoUrls: photoUrls,
+            initialIndex: initialIndex,
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+  }
+
+  String _toHighResolutionGooglePhotoUrl(String rawUrl) {
+    final url = rawUrl.trim();
+    if (url.isEmpty) return url;
+
+    const targetSize = '=w3200-h2000-k-no';
+    final sizePattern = RegExp(r'=w\d+-h\d+(?:-[^?&]*)?');
+    if (sizePattern.hasMatch(url)) {
+      return url.replaceFirst(sizePattern, targetSize);
+    }
+
+    final queryStart = url.indexOf('?');
+    if (queryStart == -1) return '$url$targetSize';
+
+    return '${url.substring(0, queryStart)}$targetSize${url.substring(queryStart)}';
   }
 
   Widget _buildPhotoFallback(ColorScheme colorScheme) {
@@ -421,17 +469,84 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
             ),
           ),
           const SizedBox(width: 16),
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: colorScheme.primary,
+          InkWell(
+            onTap: _openGoogleMaps,
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: colorScheme.primary,
+              ),
+              child: Icon(
+                Icons.navigation,
+                color: colorScheme.onPrimary,
+                size: 20,
+              ),
             ),
-            child: Icon(Icons.navigation, color: colorScheme.onPrimary, size: 20),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openGoogleMaps() async {
+    final uri = _googleMapsUri();
+    if (uri == null) return;
+
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open Google Maps.')),
+      );
+    }
+  }
+
+  Uri? _googleMapsUri() {
+    final storedUrl = widget.foodCard.googleMapsUrl?.trim();
+    if (storedUrl != null && storedUrl.isNotEmpty) {
+      return Uri.tryParse(storedUrl);
+    }
+
+    final placeId = widget.foodCard.id?.trim();
+    final title = widget.foodCard.primaryTitle.trim();
+    if (placeId != null && placeId.isNotEmpty && placeId.startsWith('ChIJ')) {
+      return Uri.https(
+        'www.google.com',
+        '/maps/search/',
+        {
+          'api': '1',
+          'query': title.isNotEmpty ? title : placeId,
+          'query_place_id': placeId,
+        },
+      );
+    }
+
+    final location = widget.foodCard.location;
+    if (location != null) {
+      return Uri.https(
+        'www.google.com',
+        '/maps/search/',
+        {
+          'api': '1',
+          'query': '${location.latitude},${location.longitude}',
+        },
+      );
+    }
+
+    final query = widget.foodCard.formattedAddress?.trim().isNotEmpty == true
+        ? widget.foodCard.formattedAddress!.trim()
+        : title;
+    if (query.isEmpty) return null;
+
+    return Uri.https(
+      'www.google.com',
+      '/maps/search/',
+      {
+        'api': '1',
+        'query': query,
+      },
     );
   }
 
@@ -913,6 +1028,174 @@ class _PopularTimePoint {
     required this.label,
     required this.percentage,
   });
+}
+
+class _FoodPhotoPreviewScreen extends StatefulWidget {
+  final List<String> photoUrls;
+  final int initialIndex;
+
+  const _FoodPhotoPreviewScreen({
+    required this.photoUrls,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_FoodPhotoPreviewScreen> createState() =>
+      _FoodPhotoPreviewScreenState();
+}
+
+class _FoodPhotoPreviewScreenState extends State<_FoodPhotoPreviewScreen> {
+  late final PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex =
+        widget.initialIndex.clamp(0, widget.photoUrls.length - 1).toInt();
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _moveBy(int delta) {
+    final nextIndex = (_currentIndex + delta)
+        .clamp(
+          0,
+          widget.photoUrls.length - 1,
+        )
+        .toInt();
+    if (nextIndex == _currentIndex) return;
+
+    _pageController.animateToPage(
+      nextIndex,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canGoBack = _currentIndex > 0;
+    final canGoForward = _currentIndex < widget.photoUrls.length - 1;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _pageController,
+              itemCount: widget.photoUrls.length,
+              onPageChanged: (index) => setState(() => _currentIndex = index),
+              itemBuilder: (context, index) {
+                final url = widget.photoUrls[index];
+                return Center(
+                  child: InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 4,
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white70,
+                          size: 48,
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+            Positioned(
+              top: 12,
+              left: 12,
+              child: IconButton.filled(
+                onPressed: () => Navigator.of(context).pop(),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black.withOpacity(0.55),
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.close),
+                tooltip: '關閉',
+              ),
+            ),
+            Positioned(
+              top: 18,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.55),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    child: Text(
+                      '${_currentIndex + 1} / ${widget.photoUrls.length}',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (widget.photoUrls.length > 1) ...[
+              Positioned(
+                left: 16,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: IconButton.filled(
+                    onPressed: canGoBack ? () => _moveBy(-1) : null,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black.withOpacity(0.55),
+                      disabledBackgroundColor: Colors.black.withOpacity(0.18),
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: Colors.white38,
+                    ),
+                    icon: const Icon(Icons.chevron_left),
+                    tooltip: '上一張',
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 16,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: IconButton.filled(
+                    onPressed: canGoForward ? () => _moveBy(1) : null,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black.withOpacity(0.55),
+                      disabledBackgroundColor: Colors.black.withOpacity(0.18),
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: Colors.white38,
+                    ),
+                    icon: const Icon(Icons.chevron_right),
+                    tooltip: '下一張',
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _HeaderFact extends StatelessWidget {
