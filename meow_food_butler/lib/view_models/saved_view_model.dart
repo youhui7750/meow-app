@@ -114,10 +114,12 @@ class SavedViewModel extends ChangeNotifier {
     ExperienceCard? saved;
     await _runSaveAction(() async {
       saved = await _repository.addExperience(experience, photos: photos);
-      if (saved != null) {
-        await _ensureFoodCard(saved!);
-      }
     });
+    // Fire Outscraper in the background after the save completes so the sheet
+    // can close immediately — the 30-second API call must not block the UI.
+    if (saved != null) {
+      unawaited(_ensureFoodCard(saved!));
+    }
   }
 
   /// Checks if a FoodCard already exists for [experience] in Firestore; if not,
