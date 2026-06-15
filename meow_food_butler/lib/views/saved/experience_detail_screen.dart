@@ -132,12 +132,8 @@ class ExperienceDetailScreen extends StatelessWidget {
                           address: experience.placeAddress ?? 'Unknown address',
                           personalRating: experience.personalRating,
                           personalNote: experience.personalNote ?? '',
-                          photoUrl: experience.photoUrls.isNotEmpty
-                              ? experience.photoUrls.first
-                              : null,
-                          photoPath: experience.photoPaths.isNotEmpty
-                              ? experience.photoPaths.first
-                              : null,
+                          photoUrls: experience.photoUrls,
+                          photoPaths: experience.photoPaths,
                           date: _formatCardDate(experience.createdTime.toDate()),
                         ),
                       ),

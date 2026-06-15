@@ -70,6 +70,9 @@
       <string>http</string>
       <string>instagram</string>
     </array>
-    
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>需要相簿存取權限以儲存分享卡片圖片</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>需要相簿存取權限以儲存分享卡片圖片</string>
 </dict>
 </plist>

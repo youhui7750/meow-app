@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:firebase_storage/firebase_storage.dart';
@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 
 class RestaurantCardData {
@@ -14,8 +15,8 @@ class RestaurantCardData {
   final String address;
   final double personalRating;
   final String personalNote;
-  final String? photoUrl;
-  final String? photoPath;
+  final List<String> photoUrls;
+  final List<String> photoPaths;
   final String date;
 
   RestaurantCardData({
@@ -23,8 +24,8 @@ class RestaurantCardData {
     required this.address,
     required this.personalRating,
     required this.personalNote,
-    required this.photoUrl,
-    required this.photoPath,
+    this.photoUrls = const [],
+    this.photoPaths = const [],
     required this.date,
   });
 }
@@ -41,19 +42,64 @@ class ShareCardPage extends StatefulWidget {
 class _ShareCardPageState extends State<ShareCardPage> {
   static const _platform = MethodChannel('meow_food_butler/shared_text');
   final GlobalKey _cardKey = GlobalKey();
+  final PageController _cardController = PageController();
   bool _isSharing = false;
+  bool _isSaving = false;
+  int _currentIndex = 0;
+
+  int get _photoCount {
+    final n = widget.data.photoUrls.length > widget.data.photoPaths.length
+        ? widget.data.photoUrls.length
+        : widget.data.photoPaths.length;
+    return n == 0 ? 1 : n;
+  }
+
+  @override
+  void dispose() {
+    _cardController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveToAlbum() async {
+    setState(() => _isSaving = true);
+    try {
+      final imageFile = await _captureCardImage();
+      if (imageFile == null) throw Exception('無法產生圖片');
+
+      final hasAccess = await Gal.hasAccess(toAlbum: true);
+      if (!hasAccess) {
+        final granted = await Gal.requestAccess(toAlbum: true);
+        if (!granted) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('需要相簿存取權限才能儲存圖片')),
+          );
+          return;
+        }
+      }
+
+      await Gal.putImage(imageFile.path, album: 'Meow Butler');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已儲存到相簿')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('儲存失敗：${e.toString()}')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
 
   Future<void> _shareToInstagramStory() async {
-    setState(() {
-      _isSharing = true;
-    });
+    setState(() => _isSharing = true);
 
     File? imageFile;
     try {
-      imageFile = await _captureCardImage();
-      if (imageFile == null) {
-        throw Exception('Unable to capture share card image.');
-      }
+      imageFile = await _captureStoryImage();
+      if (imageFile == null) throw Exception('Unable to capture share card image.');
 
       final result = await _platform.invokeMethod<bool>('shareInstagramStory', {
         'imagePath': imageFile.path,
@@ -70,25 +116,14 @@ class _ShareCardPageState extends State<ShareCardPage> {
         await _shareFallback(imageFile);
       }
     } on PlatformException catch (_) {
-      if (imageFile != null) {
-        await _shareFallback(imageFile);
-      } else if (!mounted) {
-        return;
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('分享失敗：無法生成分享圖片。')),
-        );
-      }
+      await _shareFallback(imageFile!);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('分享失敗：${error.toString()}')),
       );
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isSharing = false;
-      });
+      if (mounted) setState(() => _isSharing = false);
     }
   }
 
@@ -111,33 +146,174 @@ class _ShareCardPageState extends State<ShareCardPage> {
   }
 
   Future<File?> _captureCardImage() async {
-    final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) {
-      return null;
-    }
+    final boundary =
+        _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) return null;
 
     final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-    final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (byteData == null) {
-      return null;
-    }
+    final ByteData? byteData =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    if (byteData == null) return null;
 
     final Uint8List pngBytes = byteData.buffer.asUint8List();
     final directory = await getTemporaryDirectory();
     final file = File('${directory.path}/meow_food_butler_share_card.png');
-
     await file.writeAsBytes(pngBytes);
     return file;
   }
 
+  /// Composes a 1080×1920 IG Story: blurred photo bg + centred scaled card.
+  Future<File?> _captureStoryImage() async {
+    final cardBoundary =
+        _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (cardBoundary == null) return null;
+
+    const pixelRatio = 3.0;
+    // Expected canvas pixels for the 320×470 card
+    const cardW = 320.0 * pixelRatio; // 960
+    const cardH = 470.0 * pixelRatio; // 1410
+
+    final rawImage = await cardBoundary.toImage(pixelRatio: pixelRatio);
+
+    // Crop to exact card dimensions in case PageView painted adjacent pages.
+    final ui.Image cardImage;
+    if (rawImage.width != cardW.toInt() || rawImage.height != cardH.toInt()) {
+      final cropRecorder = ui.PictureRecorder();
+      final cropCanvas = Canvas(cropRecorder);
+      cropCanvas.drawImageRect(
+        rawImage,
+        Rect.fromLTWH(0, 0, cardW, cardH),
+        Rect.fromLTWH(0, 0, cardW, cardH),
+        Paint(),
+      );
+      cardImage = await cropRecorder
+          .endRecording()
+          .toImage(cardW.toInt(), cardH.toInt());
+    } else {
+      cardImage = rawImage;
+    }
+
+    // Fixed IG Story canvas (1080×1920)
+    const storyW = 1080.0;
+    const storyH = 1920.0;
+    final storyRect = Rect.fromLTWH(0, 0, storyW, storyH);
+
+    // Scale card to 80% of story width and centre it
+    const scale = (storyW * 0.80) / cardW;
+    const scaledW = cardW * scale;
+    const scaledH = cardH * scale;
+    const cardX = (storyW - scaledW) / 2;
+    const cardY = (storyH - scaledH) / 2;
+
+    // Resolve background photo URL
+    final photoUrl = _currentIndex < widget.data.photoUrls.length
+        ? widget.data.photoUrls[_currentIndex]
+        : null;
+    final photoPath = _currentIndex < widget.data.photoPaths.length
+        ? widget.data.photoPaths[_currentIndex]
+        : null;
+
+    String? bgUrl =
+        (photoUrl != null && photoUrl.isNotEmpty) ? photoUrl : null;
+    if (bgUrl == null && photoPath != null && photoPath.isNotEmpty) {
+      try {
+        bgUrl =
+            await FirebaseStorage.instance.ref(photoPath).getDownloadURL();
+      } catch (_) {}
+    }
+
+    final ui.Image? bgImage =
+        bgUrl != null ? await _loadNetworkImage(bgUrl) : null;
+
+    // Compose
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    if (bgImage != null) {
+      // Cover-crop bg to fill 1080×1920
+      final bgW = bgImage.width.toDouble();
+      final bgH = bgImage.height.toDouble();
+      final bgAspect = bgW / bgH;
+      const storyAspect = storyW / storyH;
+      final Rect srcRect;
+      if (bgAspect > storyAspect) {
+        final cropW = bgH * storyAspect;
+        srcRect = Rect.fromLTWH((bgW - cropW) / 2, 0, cropW, bgH);
+      } else {
+        final cropH = bgW / storyAspect;
+        srcRect = Rect.fromLTWH(0, (bgH - cropH) / 2, bgW, cropH);
+      }
+
+      // Blurred background layer
+      canvas.saveLayer(
+        storyRect,
+        Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+      );
+      canvas.drawImageRect(bgImage, srcRect, storyRect, Paint());
+      canvas.restore();
+
+      // Dark overlay so card pops
+      canvas.drawRect(storyRect, Paint()..color = const Color(0x55000000));
+    } else {
+      // Fallback gradient
+      canvas.drawRect(
+        storyRect,
+        Paint()
+          ..shader = ui.Gradient.linear(
+            Offset.zero,
+            Offset(0, storyH),
+            [const Color(0xFFFAFAF8), const Color(0xFFF0EDE6)],
+          ),
+      );
+    }
+
+    // Card image (scaled into dstRect)
+    canvas.drawImageRect(
+      cardImage,
+      Rect.fromLTWH(0, 0, cardW, cardH),
+      Rect.fromLTWH(cardX, cardY, scaledW, scaledH),
+      Paint(),
+    );
+
+    final picture = recorder.endRecording();
+    final storyUiImage =
+        await picture.toImage(storyW.toInt(), storyH.toInt());
+    final byteData =
+        await storyUiImage.toByteData(format: ui.ImageByteFormat.png);
+    if (byteData == null) return null;
+
+    final pngBytes = byteData.buffer.asUint8List();
+    final directory = await getTemporaryDirectory();
+    final file =
+        File('${directory.path}/meow_food_butler_story_export.png');
+    await file.writeAsBytes(pngBytes);
+    return file;
+  }
+
+  Future<ui.Image?> _loadNetworkImage(String url) async {
+    final completer = Completer<ui.Image?>();
+    NetworkImage(url).resolve(const ImageConfiguration()).addListener(
+      ImageStreamListener(
+        (info, _) {
+          if (!completer.isCompleted) completer.complete(info.image);
+        },
+        onError: (_, _) {
+          if (!completer.isCompleted) completer.complete(null);
+        },
+      ),
+    );
+    return completer.future;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F2ED),
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: const Text('Share Review Card'),
-        backgroundColor: const Color(0xFFF5F2ED),
-        foregroundColor: const Color(0xFF1A1A18),
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
         elevation: 0,
       ),
       body: Center(
@@ -145,39 +321,118 @@ class _ShareCardPageState extends State<ShareCardPage> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: Column(
             children: [
+              // The RepaintBoundary wraps the entire card area (including PageView).
+              // toImage() captures whatever page is currently visible.
               RepaintBoundary(
                 key: _cardKey,
-                child: _RestaurantShareCard(data: widget.data),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF1D9E75),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: ClipRect(
+                  child: SizedBox(
+                    width: 320,
+                    height: 470,
+                    child: PageView.builder(
+                      controller: _cardController,
+                      itemCount: _photoCount,
+                      onPageChanged: (i) => setState(() => _currentIndex = i),
+                      itemBuilder: (context, index) {
+                        final url = index < widget.data.photoUrls.length
+                            ? widget.data.photoUrls[index]
+                            : null;
+                        final path = index < widget.data.photoPaths.length
+                            ? widget.data.photoPaths[index]
+                            : null;
+                        return _RestaurantShareCard(
+                          data: widget.data,
+                          photoUrl: url,
+                          photoPath: path,
+                        );
+                      },
                     ),
                   ),
-                  onPressed: _isSharing ? null : _shareToInstagramStory,
-                  child: _isSharing
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFFFFFF)),
-                            strokeWidth: 2.4,
+                ),
+              ),
+              // Dots are outside the RepaintBoundary — not captured in the exported image
+              if (_photoCount > 1) ...[
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(_photoCount, (i) {
+                    final selected = i == _currentIndex;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: selected ? 14 : 5,
+                      height: 5,
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: colorScheme.onSurface
+                            .withValues(alpha: selected ? 0.6 : 0.2),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 52,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        )
-                      : const Text(
+                          side: BorderSide(color: colorScheme.outline),
+                        ),
+                        onPressed: _isSaving ? null : _saveToAlbum,
+                        icon: _isSaving
+                            ? SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colorScheme.primary,
+                                ),
+                              )
+                            : const Icon(Icons.download_outlined),
+                        label: const Text(
+                          '儲存到相簿',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFF06B2B),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: _isSharing ? null : _shareToInstagramStory,
+                        icon: _isSharing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Color(0xFFFFFFFF)),
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.send_outlined,
+                                color: Color(0xFFFFFFFF)),
+                        label: const Text(
                           '分享到 IG Story',
                           style: TextStyle(
                             color: Color(0xFFFFFFFF),
                             fontWeight: FontWeight.w700,
-                            fontSize: 16,
                           ),
                         ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -190,8 +445,14 @@ class _ShareCardPageState extends State<ShareCardPage> {
 
 class _RestaurantShareCard extends StatelessWidget {
   final RestaurantCardData data;
+  final String? photoUrl;
+  final String? photoPath;
 
-  const _RestaurantShareCard({required this.data});
+  const _RestaurantShareCard({
+    required this.data,
+    this.photoUrl,
+    this.photoPath,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -200,16 +461,13 @@ class _RestaurantShareCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFFAFAF8),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFE0DDD5),
-          width: 0.5,
-        ),
+        border: Border.all(color: const Color(0xFFE0DDD5), width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildPhotoSection(),
-          _buildTextSection(),
+          Expanded(child: _buildTextSection()),
         ],
       ),
     );
@@ -228,9 +486,10 @@ class _RestaurantShareCard extends StatelessWidget {
               bottom: 16,
               right: 16,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFFFFF).withOpacity(0.92),
+                  color: const Color(0xFFFFFFFF).withValues(alpha: 0.92),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -257,17 +516,18 @@ class _RestaurantShareCard extends StatelessWidget {
   }
 
   Widget _buildPhotoContent() {
-    if (data.photoUrl != null && data.photoUrl!.isNotEmpty) {
+    if (photoUrl != null && photoUrl!.isNotEmpty) {
       return Image.network(
-        data.photoUrl!,
+        photoUrl!,
+        key: ValueKey(photoUrl),
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
         webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
         errorBuilder: (context, error, stackTrace) {
-          if (data.photoPath != null && data.photoPath!.isNotEmpty) {
+          if (photoPath != null && photoPath!.isNotEmpty) {
             return _StoragePathImage(
-              path: data.photoPath!,
+              path: photoPath!,
               width: double.infinity,
               height: double.infinity,
               fit: BoxFit.cover,
@@ -277,17 +537,15 @@ class _RestaurantShareCard extends StatelessWidget {
           return _buildPhotoPlaceholder();
         },
         loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) {
-            return child;
-          }
+          if (loadingProgress == null) return child;
           return _buildPhotoPlaceholder();
         },
       );
     }
 
-    if (data.photoPath != null && data.photoPath!.isNotEmpty) {
+    if (photoPath != null && photoPath!.isNotEmpty) {
       return _StoragePathImage(
-        path: data.photoPath!,
+        path: photoPath!,
         width: double.infinity,
         height: double.infinity,
         fit: BoxFit.cover,
@@ -302,11 +560,7 @@ class _RestaurantShareCard extends StatelessWidget {
     return Container(
       color: const Color(0xFFD9D9D4),
       child: const Center(
-        child: Icon(
-          Icons.camera_alt,
-          size: 44,
-          color: Color(0xFF8B8B84),
-        ),
+        child: Icon(Icons.camera_alt, size: 44, color: Color(0xFF8B8B84)),
       ),
     );
   }
@@ -352,7 +606,7 @@ class _RestaurantShareCard extends StatelessWidget {
           const Divider(height: 1, thickness: 0.5, color: Color(0xFFE0DDD5)),
           const SizedBox(height: 14),
           Text(
-            '“${data.personalNote}”',
+            '"${data.personalNote}"',
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -361,25 +615,21 @@ class _RestaurantShareCard extends StatelessWidget {
               height: 1.6,
             ),
           ),
-          const SizedBox(height: 18),
+          const Spacer(),
           Row(
             children: [
-              Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1D9E75),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(
-                  Icons.pets,
-                  size: 14,
-                  color: Color(0xFFFFFFFF),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.asset(
+                  'assets/images/app_icon.png',
+                  width: 22,
+                  height: 22,
+                  fit: BoxFit.cover,
                 ),
               ),
               const SizedBox(width: 8),
               const Text(
-                'Meow Food Butler',
+                'Meow Butler',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
