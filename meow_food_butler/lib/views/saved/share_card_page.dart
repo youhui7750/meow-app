@@ -102,7 +102,7 @@ class _ShareCardPageState extends State<ShareCardPage> {
       if (imageFile == null) throw Exception('Unable to capture share card image.');
 
       final result = await _platform.invokeMethod<bool>('shareInstagramStory', {
-        'imagePath': imageFile.path,
+        'backgroundImage': imageFile.path,
         'backgroundTopColor': '#FAFAF8',
         'backgroundBottomColor': '#F0EDE6',
       });
@@ -112,7 +112,7 @@ class _ShareCardPageState extends State<ShareCardPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Opened Instagram Story share.')),
         );
-      } else if (imageFile != null) {
+      } else {
         await _shareFallback(imageFile);
       }
     } on PlatformException catch (_) {

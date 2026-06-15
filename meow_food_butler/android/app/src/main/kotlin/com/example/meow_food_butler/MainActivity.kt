@@ -25,11 +25,11 @@ class MainActivity : FlutterActivity() {
       when (call.method) {
         "getSharedText" -> result.success(sharedText)
         "shareInstagramStory" -> {
-          val path = call.argument<String>("imagePath")
+          val path = call.argument<String>("backgroundImage")
           val topColor = call.argument<String>("backgroundTopColor")
           val bottomColor = call.argument<String>("backgroundBottomColor")
           if (path == null) {
-            result.error("INVALID_ARGUMENT", "imagePath is required", null)
+            result.error("INVALID_ARGUMENT", "backgroundImage is required", null)
           } else {
             result.success(shareInstagramStory(path, topColor, bottomColor))
           }
@@ -63,7 +63,7 @@ class MainActivity : FlutterActivity() {
 
     val intent = Intent("com.instagram.share.ADD_TO_STORY").apply {
       setDataAndType(uri, "image/png")
-      putExtra("interactive_asset_uri", uri)
+      putExtra("com.instagram.share.ADD_TO_STORY_BACKGROUND_ASSET_URI", uri)
       putExtra("top_background_color", topColor)
       putExtra("bottom_background_color", bottomColor)
       putExtra("source_application", packageName)
