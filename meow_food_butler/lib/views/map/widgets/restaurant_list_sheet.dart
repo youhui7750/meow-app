@@ -535,8 +535,10 @@ class _SheetHeader extends StatelessWidget {
 
   void _expandSheet() {
     if (!controller.isAttached) return;
+    final atMax =
+        (controller.size - RestaurantListSheet.maxSize).abs() < 0.02;
     controller.animateTo(
-      RestaurantListSheet.maxSize,
+      atMax ? RestaurantListSheet.minSize : RestaurantListSheet.maxSize,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
     );
@@ -977,29 +979,32 @@ class _MapRestaurantCard extends StatelessWidget {
                             Row(
                               children: [
                                 Icon(
-                                  mode == MapSheetMode.imported
+                                  (mode == MapSheetMode.imported &&
+                                          experience.personalRating <= 0)
                                       ? Icons.link
                                       : Icons.star,
                                   size: 16,
-                                  color: mode == MapSheetMode.imported
+                                  color: (mode == MapSheetMode.imported &&
+                                          experience.personalRating <= 0)
                                       ? colorScheme.primary
                                       : Colors.amber.shade700,
                                 ),
                                 const SizedBox(width: 3),
                                 Text(
-                                  mode == MapSheetMode.imported
+                                  (mode == MapSheetMode.imported &&
+                                          experience.personalRating <= 0)
                                       ? 'From import'
                                       : experience.personalRating
                                             .toStringAsFixed(1),
                                   style: theme.textTheme.labelLarge?.copyWith(
-                                    color: mode == MapSheetMode.imported
+                                    color: (mode == MapSheetMode.imported &&
+                                            experience.personalRating <= 0)
                                         ? colorScheme.primary
                                         : Colors.amber.shade800,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                if (mode == MapSheetMode.myPlaces &&
-                                    distanceLabel != null) ...[
+                                if (distanceLabel != null) ...[
                                   const SizedBox(width: 8),
                                   Icon(
                                     Icons.near_me,

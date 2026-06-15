@@ -831,36 +831,49 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
     List<_PopularTimePoint> points,
     ColorScheme colorScheme,
   ) {
+    final currentHour = DateTime.now().hour;
+    const barHeight = 56.0;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: points.map((point) {
         final percentage = point.percentage.clamp(0, 100).toDouble();
-        final isPeak = percentage >= 80;
+        final isCurrent = point.hour == currentHour;
 
         return Expanded(
           child: Column(
             children: [
-              Container(
-                height: 54,
-                alignment: Alignment.bottomCenter,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  height: 10 + (percentage / 100) * 44,
-                  width: 18,
-                  decoration: BoxDecoration(
-                    color: isPeak
-                        ? colorScheme.primary
-                        : colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(7),
+              SizedBox(
+                height: barHeight,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    height: (percentage / 100) * barHeight,
+                    margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                    decoration: BoxDecoration(
+                      color: isCurrent
+                          ? colorScheme.primary
+                          : colorScheme.primary.withValues(alpha: 0.28),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(3),
+                      ),
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 4),
               Text(
-                point.label,
+                (point.hour != null && point.hour! % 3 == 0)
+                    ? point.label
+                    : '',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                      color: isCurrent
+                          ? colorScheme.primary
+                          : colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w700,
+                      fontSize: 9,
                     ),
               ),
             ],
@@ -959,35 +972,34 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
       final rawPoints = selectedDay['popular_times'];
       if (rawPoints is! List) return const [];
 
-      final points = rawPoints
+      return rawPoints
           .whereType<Map>()
           .map((item) {
             final percentage = (item['percentage'] as num?)?.toInt() ?? 0;
             final hour = (item['hour'] as num?)?.toInt();
             final label = (item['time'] as String?) ??
                 (hour == null ? '' : hour.toString());
-            return _PopularTimePoint(label: label, percentage: percentage);
+            return _PopularTimePoint(
+              label: label,
+              percentage: percentage,
+              hour: hour,
+            );
           })
           .where((point) => point.percentage > 0)
           .toList();
-
-      if (points.length <= 8) return points;
-
-      final step = (points.length / 8).ceil();
-      return [
-        for (var i = 0; i < points.length; i += step) points[i],
-      ].take(8).toList();
     }
 
     if (popular is Map) {
-      return popular.entries.take(8).map((entry) {
+      return popular.entries.map((entry) {
         final value = entry.value;
         final percentage = value is Map
             ? (value['percentage'] as num?)?.toInt() ?? 0
             : (value is num ? value.toInt() : 0);
+        final hour = int.tryParse(entry.key.toString());
         return _PopularTimePoint(
           label: entry.key.toString(),
           percentage: percentage,
+          hour: hour,
         );
       }).where((point) => point.percentage > 0).toList();
     }
@@ -1021,10 +1033,12 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
 class _PopularTimePoint {
   final String label;
   final int percentage;
+  final int? hour;
 
   const _PopularTimePoint({
     required this.label,
     required this.percentage,
+    this.hour,
   });
 }
 
