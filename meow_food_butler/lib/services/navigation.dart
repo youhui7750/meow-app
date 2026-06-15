@@ -91,11 +91,9 @@ class ScaffoldWithNestedNavigation extends StatelessWidget {
   });
 
   void _onTap(int index) {
-    // Navigates to the designated branch while preserving stack state
-    navigationShell.goBranch(
-      index,
-      initialLocation: index == navigationShell.currentIndex,
-    );
+    // Always reset the branch to its root when switching tabs so that detail
+    // screens (e.g. a Saved record) don't persist across tab switches.
+    navigationShell.goBranch(index, initialLocation: true);
   }
 
   @override

@@ -209,18 +209,40 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
   Future<FoodCard?> _fetchRestaurantForExperience(
     ExperienceCard experience,
   ) async {
-    // Prefer the exact place_id the user picked at creation; fall back to the
-    // name only when there's no id. The backend (fetchRestaurant) handles detail
-    // + menu photos + reviews and the photo merge server-side.
+    // Lookup priority:
+    //   1. placeId (exact Google place) → converts to Maps URL on backend
+    //   2. googleMapsUrl (user's saved Maps link) → Outscraper resolves exact place
+    //   3. text query = "name, address" for more specific fuzzy search
     final placeId = experience.placeId?.trim();
-    final query = experience.placeTitle?.trim();
-    if ((placeId == null || placeId.isEmpty) && (query == null || query.isEmpty)) {
+    final mapsUrl = experience.googleMapsUrl?.trim();
+
+    final String? effectivePlaceId;
+    final String? effectiveQuery;
+
+    if (placeId != null && placeId.isNotEmpty) {
+      effectivePlaceId = placeId;
+      effectiveQuery = experience.placeTitle?.trim();
+    } else if (mapsUrl != null && mapsUrl.isNotEmpty) {
+      // A Maps URL is precise enough to act as placeId
+      effectivePlaceId = mapsUrl;
+      effectiveQuery = experience.placeTitle?.trim();
+    } else {
+      effectivePlaceId = null;
+      // Include address so Outscraper can disambiguate (e.g. "Ginzeng, 水木餐廳 Hsinchu")
+      final parts = [
+        experience.placeTitle?.trim(),
+        experience.placeAddress?.trim(),
+      ].whereType<String>().where((s) => s.isNotEmpty).toList();
+      effectiveQuery = parts.isNotEmpty ? parts.join(', ') : null;
+    }
+
+    if (effectivePlaceId == null && (effectiveQuery == null || effectiveQuery.isEmpty)) {
       return null;
     }
 
     return RestaurantLookupService().fetch(
-      placeId: placeId,
-      query: query,
+      placeId: effectivePlaceId,
+      query: effectiveQuery,
       originalURL: experience.originalURL,
       tags: experience.personalTags,
       visited: experience.isDone,

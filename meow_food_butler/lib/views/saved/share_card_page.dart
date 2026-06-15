@@ -316,128 +316,136 @@ class _ShareCardPageState extends State<ShareCardPage> {
         foregroundColor: colorScheme.onSurface,
         elevation: 0,
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            children: [
-              // The RepaintBoundary wraps the entire card area (including PageView).
-              // toImage() captures whatever page is currently visible.
-              RepaintBoundary(
-                key: _cardKey,
-                child: ClipRect(
-                  child: SizedBox(
-                    width: 320,
-                    height: 470,
-                    child: PageView.builder(
-                      controller: _cardController,
-                      itemCount: _photoCount,
-                      onPageChanged: (i) => setState(() => _currentIndex = i),
-                      itemBuilder: (context, index) {
-                        final url = index < widget.data.photoUrls.length
-                            ? widget.data.photoUrls[index]
-                            : null;
-                        final path = index < widget.data.photoPaths.length
-                            ? widget.data.photoPaths[index]
-                            : null;
-                        return _RestaurantShareCard(
-                          data: widget.data,
-                          photoUrl: url,
-                          photoPath: path,
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-              // Dots are outside the RepaintBoundary — not captured in the exported image
-              if (_photoCount > 1) ...[
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(_photoCount, (i) {
-                    final selected = i == _currentIndex;
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: selected ? 14 : 5,
-                      height: 5,
-                      margin: const EdgeInsets.only(right: 4),
-                      decoration: BoxDecoration(
-                        color: colorScheme.onSurface
-                            .withValues(alpha: selected ? 0.6 : 0.2),
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                    );
-                  }),
-                ),
-              ],
-              const SizedBox(height: 24),
-              SizedBox(
-                height: 52,
-                child: Row(
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: BorderSide(color: colorScheme.outline),
-                        ),
-                        onPressed: _isSaving ? null : _saveToAlbum,
-                        icon: _isSaving
-                            ? SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: colorScheme.primary,
-                                ),
-                              )
-                            : const Icon(Icons.download_outlined),
-                        label: const Text(
-                          '儲存到相簿',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFF06B2B),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: _isSharing ? null : _shareToInstagramStory,
-                        icon: _isSharing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Color(0xFFFFFFFF)),
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.send_outlined,
-                                color: Color(0xFFFFFFFF)),
-                        label: const Text(
-                          '分享到 IG Story',
-                          style: TextStyle(
-                            color: Color(0xFFFFFFFF),
-                            fontWeight: FontWeight.w700,
+                    // The RepaintBoundary wraps the entire card area (including PageView).
+                    // toImage() captures whatever page is currently visible.
+                    RepaintBoundary(
+                      key: _cardKey,
+                      child: ClipRect(
+                        child: SizedBox(
+                          width: 320,
+                          height: 470,
+                          child: PageView.builder(
+                            controller: _cardController,
+                            itemCount: _photoCount,
+                            onPageChanged: (i) =>
+                                setState(() => _currentIndex = i),
+                            itemBuilder: (context, index) {
+                              final url = index < widget.data.photoUrls.length
+                                  ? widget.data.photoUrls[index]
+                                  : null;
+                              final path =
+                                  index < widget.data.photoPaths.length
+                                      ? widget.data.photoPaths[index]
+                                      : null;
+                              return _RestaurantShareCard(
+                                data: widget.data,
+                                photoUrl: url,
+                                photoPath: path,
+                              );
+                            },
                           ),
                         ),
                       ),
                     ),
+                    // Dots are outside the RepaintBoundary — not captured in the exported image
+                    if (_photoCount > 1) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(_photoCount, (i) {
+                          final selected = i == _currentIndex;
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: selected ? 14 : 5,
+                            height: 5,
+                            margin: const EdgeInsets.only(right: 4),
+                            decoration: BoxDecoration(
+                              color: colorScheme.onSurface
+                                  .withValues(alpha: selected ? 0.6 : 0.2),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
                   ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            child: SizedBox(
+              height: 52,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(color: colorScheme.outline),
+                      ),
+                      onPressed: _isSaving ? null : _saveToAlbum,
+                      icon: _isSaving
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.primary,
+                              ),
+                            )
+                          : const Icon(Icons.download_outlined),
+                      label: const Text(
+                        '儲存到相簿',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colorScheme.primaryContainer,
+                        foregroundColor: colorScheme.onPrimaryContainer,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: _isSharing ? null : _shareToInstagramStory,
+                      icon: _isSharing
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    colorScheme.onPrimaryContainer),
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.send_outlined),
+                      label: const Text(
+                        '分享到 IG Story',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
