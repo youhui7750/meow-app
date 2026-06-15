@@ -8,7 +8,31 @@
 const { z } = require("genkit");
 const logger = require("firebase-functions/logger");
 
-const { haversineMeters, walkMinutes } = require("../../geo");
+const { haversineMeters, formatDistance } = require("../../geo");
+
+/**
+ * A Google Maps **directions** deep link (the navigation page) to a spot. The
+ * `origin` is intentionally omitted so Maps starts the route from the user's
+ * current location. A real Place ID (`ChIJ…`) pins the exact place; otherwise
+ * the destination text / coordinates are resolved by Maps.
+ */
+function directionsUrl({ id, displayName, latitude, longitude }) {
+  const destination =
+    displayName ||
+    (typeof latitude === "number" && typeof longitude === "number"
+      ? `${latitude},${longitude}`
+      : "");
+  if (!destination) return null;
+  const params = new URLSearchParams({
+    api: "1",
+    destination,
+    travelmode: "walking",
+  });
+  if (typeof id === "string" && id.startsWith("ChIJ")) {
+    params.set("destination_place_id", id);
+  }
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
 
 /**
  * Google Places (v1) Text Search around the user. Node 24 has fetch.
@@ -60,9 +84,11 @@ function defineSearchSpots(ai, { placesApiKey = "" } = {}) {
       description:
         "L1 skill. Finds REAL nearby food spots matching a craving (cuisine or " +
         "dish) around the user's current location. Returns a candidate list with " +
-        "rating and walking distance, closest first. If it returns no candidates, " +
-        "tell the user plainly that you couldn't find a match nearby — do NOT " +
-        "invent places or ask them to re-spell the dish.",
+        "rating and walking distance, closest first. Each candidate includes a " +
+        "mapsUrl navigation link — when you recommend a spot, include its mapsUrl " +
+        "as a Markdown link (e.g. '[導航](URL)') so the user can tap to navigate. " +
+        "If it returns no candidates, tell the user plainly that you couldn't " +
+        "find a match nearby — do NOT invent places or ask them to re-spell the dish.",
       inputSchema: z.object({
         cuisine: z
           .string()
@@ -78,8 +104,17 @@ function defineSearchSpots(ai, { placesApiKey = "" } = {}) {
             rating: z.number().nullable(),
             distanceMeters: z.number().nullable(),
             walkMinutes: z.number().nullable(),
+            distanceLabel: z.string().nullable(),
             latitude: z.number().nullable(),
             longitude: z.number().nullable(),
+            mapsUrl: z
+              .string()
+              .nullable()
+              .describe(
+                "Google Maps navigation link to this spot (starts from the " +
+                  "user's current location). Include it in your reply as a " +
+                  "Markdown link so the user can tap to navigate.",
+              ),
           }),
         ),
         note: z.string().optional(),
@@ -122,18 +157,25 @@ function defineSearchSpots(ai, { placesApiKey = "" } = {}) {
               latitude: p.location.latitude,
               longitude: p.location.longitude,
             };
-            const distanceMeters = here
-              ? Math.round(haversineMeters(loc, here))
-              : null;
+            const dist = here
+              ? formatDistance(haversineMeters(loc, here))
+              : { distanceMeters: null, walkMinutes: null, distanceLabel: null };
             return {
               id: p.id,
               displayName: p.displayName,
               address: p.address,
               rating: p.rating,
-              distanceMeters,
-              walkMinutes: distanceMeters != null ? walkMinutes(distanceMeters) : null,
+              distanceMeters: dist.distanceMeters,
+              walkMinutes: dist.walkMinutes,
+              distanceLabel: dist.distanceLabel,
               latitude: here ? here.latitude : null,
               longitude: here ? here.longitude : null,
+              mapsUrl: directionsUrl({
+                id: p.id,
+                displayName: p.displayName,
+                latitude: here ? here.latitude : null,
+                longitude: here ? here.longitude : null,
+              }),
             };
           })
           .sort((a, b) => (a.distanceMeters ?? 1e12) - (b.distanceMeters ?? 1e12));
@@ -173,4 +215,4 @@ function defineSearchSpots(ai, { placesApiKey = "" } = {}) {
   );
 }
 
-module.exports = { defineSearchSpots, searchText };
+module.exports = { defineSearchSpots, searchText, directionsUrl };

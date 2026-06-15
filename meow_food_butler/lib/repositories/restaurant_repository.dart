@@ -34,6 +34,51 @@ class RestaurantRepository {
     });
   }
 
+  /// The most recently saved wish-list restaurant (想去, i.e. not yet visited),
+  /// optionally filtered to those matching [query] (case-insensitive) by name,
+  /// tags, category, subtypes, description, or address. Returns null when
+  /// nothing matches.
+  ///
+  /// Mirrors [SavedViewModel.latestExperience] for the chat's `/latest-restaurant`
+  /// test command, and exercises the same wish-list card path the butler's
+  /// `searchMyPlaces` skill drives for "any ramen in my wish list?" requests.
+  Future<FoodCard?> latestRestaurant({String? query}) async {
+    // watchRestaurants emits newest-first, so the first match is the latest.
+    final restaurants = await watchRestaurants().first;
+    final needle = query?.trim().toLowerCase();
+    for (final restaurant in restaurants) {
+      if (restaurant.id == null) continue;
+      if (restaurant.visited) continue; // wish list only
+      if (needle != null &&
+          needle.isNotEmpty &&
+          !_matchesQuery(restaurant, needle)) {
+        continue;
+      }
+      return restaurant;
+    }
+    return null;
+  }
+
+  /// Whether [restaurant] matches an already-lowercased [needle] on its name,
+  /// category, subtypes, description, address, or any tag.
+  bool _matchesQuery(FoodCard restaurant, String needle) {
+    if (restaurant.primaryTitle.toLowerCase().contains(needle)) return true;
+    if ((restaurant.category ?? '').toLowerCase().contains(needle)) return true;
+    if ((restaurant.description ?? '').toLowerCase().contains(needle)) {
+      return true;
+    }
+    if ((restaurant.formattedAddress ?? '').toLowerCase().contains(needle)) {
+      return true;
+    }
+    for (final tag in restaurant.tags) {
+      if (tag.toLowerCase().contains(needle)) return true;
+    }
+    for (final subtype in restaurant.subtypes) {
+      if (subtype.toLowerCase().contains(needle)) return true;
+    }
+    return false;
+  }
+
   Future<List<FoodCard>> restaurantsByIds(List<String> ids) async {
     final restaurants = <FoodCard>[];
     for (final id in ids) {
