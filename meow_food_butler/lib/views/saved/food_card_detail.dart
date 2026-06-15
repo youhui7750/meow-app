@@ -35,16 +35,6 @@ class FoodCardDetail extends StatefulWidget {
 class _FoodCardDetailState extends State<FoodCardDetail> {
   int _heroPageIndex = 0;
   final PageController _heroPageController = PageController();
-  
-  final List<_DemoMenuItem> _demoMenuItems = const [
-    _DemoMenuItem('招牌健康餐盒', '舒肥雞胸、季節蔬菜、紫米飯', 'NT\$ 165'),
-    _DemoMenuItem('炙燒牛五花餐盒', '微辣醬汁、溫泉蛋、青花菜', 'NT\$ 210'),
-    _DemoMenuItem('低醣鮭魚餐盒', '烤鮭魚、花椰菜米、胡麻沙拉', 'NT\$ 240'),
-  ];
-  final List<_DemoReview> _demoReviews = const [
-    _DemoReview('份量剛好，雞胸不乾，午餐尖峰要提早訂。', 5),
-    _DemoReview('菜色清爽，價格偏中上，但外送包裝很穩。', 4),
-  ];
 
   @override
   void dispose() {
@@ -57,14 +47,20 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
     final colorScheme = Theme.of(context).colorScheme;
     final allExperiences = context.watch<SavedViewModel>().experiences;
 
-    var currentExperiences = allExperiences.where((e) {
+    final relatedExperiences = allExperiences.where((e) {
       final key1 = e.foodCardId ?? e.placeId ?? e.placeTitle;
       final key2 = widget.foodCard.id ?? widget.foodCard.primaryTitle;
       return key1 == key2;
     }).toList();
 
-    if (currentExperiences.isEmpty) {
-      currentExperiences = List.from(widget.experiences);
+    final currentExperiences = <ExperienceCard>[];
+    for (final exp in [...widget.experiences, ...relatedExperiences]) {
+      final duplicate = currentExperiences.any((item) {
+        if (item.id != null && exp.id != null) return item.id == exp.id;
+        return item.placeTitle == exp.placeTitle &&
+            item.createdTime == exp.createdTime;
+      });
+      if (!duplicate) currentExperiences.add(exp);
     }
 
     currentExperiences.sort((a, b) {
@@ -85,7 +81,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
       backgroundColor: colorScheme.surface,
       body: Column(
         children: [
-          _buildHeroImage(colorScheme, currentExperiences),
+          _buildHeroImage(colorScheme, widget.experiences, currentExperiences),
           _buildHeader(colorScheme, currentExperiences),
           Expanded(
             child: SingleChildScrollView(
@@ -108,19 +104,33 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
 
   Widget _buildHeroImage(
     ColorScheme colorScheme,
+    List<ExperienceCard> priorityExperiences,
     List<ExperienceCard> currentExperiences,
   ) {
     ExperienceCard? heroExperience;
-    for (final experience in currentExperiences) {
+    for (final experience in [...priorityExperiences, ...currentExperiences]) {
       if (experience.photoUrls.isNotEmpty || experience.photoPaths.isNotEmpty) {
         heroExperience = experience;
         break;
       }
     }
 
+    final photoPages = widget.foodCard.photoUrls
+        .take(5)
+        .map((url) => _buildRestaurantPhotoUrlPage(
+              colorScheme,
+              url,
+              heroExperience,
+            ))
+        .toList();
+
     final pages = <Widget>[
-      _buildRestaurantPhotoPage(colorScheme, heroExperience),
-      _buildMenuPreviewPage(colorScheme),
+      if (photoPages.isNotEmpty)
+        ...photoPages
+      else
+        _buildRestaurantPhotoPage(colorScheme, heroExperience),
+      if (widget.foodCard.menuLink?.isNotEmpty == true)
+        _buildMenuPreviewPage(colorScheme),
     ];
 
     return Stack(
@@ -198,17 +208,31 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
       );
     }
 
-    if (widget.foodCard.originalURL != null) {
-      return Image.network(
-        widget.foodCard.originalURL!,
-        fit: BoxFit.cover,
-        webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-        errorBuilder: (context, error, stackTrace) =>
-            _buildPhotoFallback(colorScheme),
-      );
-    }
-
     return _buildPhotoFallback(colorScheme);
+  }
+
+  Widget _buildRestaurantPhotoUrlPage(
+    ColorScheme colorScheme,
+    String url,
+    ExperienceCard? heroExperience,
+  ) {
+    return Image.network(
+      key: ValueKey(url),
+      url,
+      fit: BoxFit.cover,
+      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+      errorBuilder: (context, error, stackTrace) {
+        if (heroExperience != null) {
+          return ExperiencePhoto(
+            experience: heroExperience,
+            width: MediaQuery.sizeOf(context).width,
+            height: 220,
+            borderRadius: 0,
+          );
+        }
+        return _buildPhotoFallback(colorScheme);
+      },
+    );
   }
 
   Widget _buildPhotoFallback(ColorScheme colorScheme) {
@@ -226,6 +250,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
 
   Widget _buildMenuPreviewPage(ColorScheme colorScheme) {
     final textTheme = Theme.of(context).textTheme;
+    final menuLink = widget.foodCard.menuLink;
 
     return Container(
       color: colorScheme.surfaceContainerHighest,
@@ -247,53 +272,40 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
             ],
           ),
           const SizedBox(height: 12),
-          Expanded(
-            child: ListView.separated(
-              padding: EdgeInsets.zero,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _demoMenuItems.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final item = _demoMenuItems[index];
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          if (menuLink != null)
+            InkWell(
+              onTap: () async {
+                final uri = Uri.parse(menuLink);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: Row(
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          Text(
-                            item.description,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        menuLink,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Text(
-                      item.price,
-                      style: textTheme.labelLarge?.copyWith(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
+                    const SizedBox(width: 10),
+                    Icon(Icons.open_in_new, color: colorScheme.primary),
                   ],
-                );
-              },
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -301,7 +313,7 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
 
   Widget _buildHeader(ColorScheme colorScheme, List<ExperienceCard> currentExperiences) {
     final textTheme = Theme.of(context).textTheme;
-    final rating = widget.foodCard.rating ?? 4.5;
+    final rating = widget.foodCard.rating;
 
     final visitCount = currentExperiences.length;
     final avgRating = visitCount > 0 
@@ -336,44 +348,40 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
                   runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ...List.generate(
-                          5,
-                          (index) => Icon(
-                            Icons.star,
-                            size: 16,
-                            color: index < rating.round()
-                                ? Colors.amber.shade700
-                                : colorScheme.outlineVariant,
+                    if (rating != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ...List.generate(
+                            5,
+                            (index) => Icon(
+                              Icons.star,
+                              size: 16,
+                              color: index < rating.round()
+                                  ? Colors.amber.shade700
+                                  : colorScheme.outlineVariant,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          rating.toStringAsFixed(1),
-                          style: textTheme.labelLarge?.copyWith(
-                            color: Colors.amber.shade800,
-                            fontWeight: FontWeight.w900,
+                          const SizedBox(width: 6),
+                          Text(
+                            rating.toStringAsFixed(1),
+                            style: textTheme.labelLarge?.copyWith(
+                              color: Colors.amber.shade800,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '(426)',
-                          style: textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '•',
-                      style: TextStyle(
-                        color: colorScheme.outlineVariant,
-                        fontWeight: FontWeight.bold,
+                          if (widget.foodCard.reviews != null) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              '(${widget.foodCard.reviews})',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                    ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -429,64 +437,100 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
 
   Widget _buildOnlineInfoSection(ColorScheme colorScheme) {
     final textTheme = Theme.of(context).textTheme;
+    final facts = _headerFacts(colorScheme);
+    final hasHours =
+        widget.foodCard.workingHours != null || widget.foodCard.popularTimes != null;
+    final hasDescription = widget.foodCard.description?.trim().isNotEmpty == true;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.storefront_outlined, size: 18, color: colorScheme.primary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                widget.foodCard.formattedAddress ?? "This is a highly popular restaurant offering a variety of specialty dishes. Highly recommended.",
-                style: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.5),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          child: Row(
+        if (widget.foodCard.formattedAddress?.isNotEmpty == true ||
+            hasDescription) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _HeaderFact(
-                icon: Icons.schedule,
-                text: 'Open now · until 20:30',
-                colorScheme: colorScheme,
-              ),
-              const SizedBox(width: 8),
-              _HeaderFact(
-                icon: Icons.phone,
-                text: '03-555-1295',
-                colorScheme: colorScheme,
-              ),
-              const SizedBox(width: 8),
-              _HeaderFact(
-                icon: Icons.payments_outlined,
-                text: '\$\$ · NT\$160-280',
-                colorScheme: colorScheme,
-              ),
-              const SizedBox(width: 8),
-              _HeaderFact(
-                icon: Icons.timer_outlined,
-                text: '35-50 min',
-                colorScheme: colorScheme,
+              Icon(Icons.storefront_outlined,
+                  size: 18, color: colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  widget.foodCard.formattedAddress ??
+                      widget.foodCard.description!,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 24),
-        _buildSectionTitle('Hours & crowd', Icons.schedule, colorScheme),
-        const SizedBox(height: 12),
-        _buildHoursCard(colorScheme),
-        const SizedBox(height: 24),
-        _buildSectionTitle('Reviews', Icons.forum_outlined, colorScheme),
-        const SizedBox(height: 12),
-        ..._demoReviews.map((review) => _buildReviewCard(review, colorScheme)),
+          const SizedBox(height: 12),
+        ],
+        if (facts.isNotEmpty) ...[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                for (var i = 0; i < facts.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  facts[i],
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+        if (hasHours) ...[
+          _buildSectionTitle('Hours & crowd', Icons.schedule, colorScheme),
+          const SizedBox(height: 12),
+          _buildHoursCard(colorScheme),
+          const SizedBox(height: 24),
+        ],
+        if (widget.foodCard.reviewSnippets.isNotEmpty) ...[
+          _buildSectionTitle('Reviews', Icons.forum_outlined, colorScheme),
+          const SizedBox(height: 12),
+          ...widget.foodCard.reviewSnippets
+              .take(3)
+              .map((review) => _buildReviewCard(review, colorScheme)),
+        ],
       ],
     );
+  }
+
+  List<Widget> _headerFacts(ColorScheme colorScheme) {
+    final facts = <Widget>[];
+    final todayHours = _todayHoursLabel();
+    if (todayHours != null) {
+      facts.add(_HeaderFact(
+        icon: Icons.schedule,
+        text: todayHours,
+        colorScheme: colorScheme,
+      ));
+    }
+    if (widget.foodCard.phone?.isNotEmpty == true) {
+      facts.add(_HeaderFact(
+        icon: Icons.phone,
+        text: widget.foodCard.phone!,
+        colorScheme: colorScheme,
+      ));
+    }
+    if (widget.foodCard.priceRange?.isNotEmpty == true) {
+      facts.add(_HeaderFact(
+        icon: Icons.payments_outlined,
+        text: widget.foodCard.priceRange!,
+        colorScheme: colorScheme,
+      ));
+    }
+    if (widget.foodCard.typicalTimeSpent?.isNotEmpty == true) {
+      facts.add(_HeaderFact(
+        icon: Icons.timer_outlined,
+        text: widget.foodCard.typicalTimeSpent!,
+        colorScheme: colorScheme,
+      ));
+    }
+    return facts;
   }
 
   Widget _buildSourceLinkSection(ColorScheme colorScheme, List<ExperienceCard> currentExperiences) {
@@ -598,6 +642,8 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
 
   Widget _buildHoursCard(ColorScheme colorScheme) {
     final textTheme = Theme.of(context).textTheme;
+    final todayHours = _todayHoursLabel();
+    final popularBars = _popularTimeBarsForToday();
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -611,55 +657,61 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
         children: [
           Row(
             children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(
-                  color: colorScheme.tertiaryContainer,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  'Open now',
-                  style: textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onTertiaryContainer,
-                    fontWeight: FontWeight.w900,
+              if (todayHours != null) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    'Hours',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onTertiaryContainer,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Mon-Sun 10:30-20:30',
-                  style: textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    todayHours,
+                    style: textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            'Popular times today',
-            style: textTheme.labelMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w800,
+          if (popularBars.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Popular times',
+              style: textTheme.labelMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          _buildPeakBars(colorScheme),
+            const SizedBox(height: 8),
+            _buildPopularTimeBars(popularBars, colorScheme),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildPeakBars(ColorScheme colorScheme) {
-    const values = [0.25, 0.48, 0.88, 0.72, 0.38, 0.56];
-    const labels = ['10', '11', '12', '13', '14', '18'];
-
+  Widget _buildPopularTimeBars(
+    List<_PopularTimePoint> points,
+    ColorScheme colorScheme,
+  ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
-      children: List.generate(values.length, (index) {
-        final isPeak = values[index] > 0.8;
+      children: points.map((point) {
+        final percentage = point.percentage.clamp(0, 100).toDouble();
+        final isPeak = percentage >= 80;
+
         return Expanded(
           child: Column(
             children: [
@@ -668,18 +720,19 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
                 alignment: Alignment.bottomCenter,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  height: 12 + values[index] * 42,
+                  height: 10 + (percentage / 100) * 44,
                   width: 18,
                   decoration: BoxDecoration(
-                    color:
-                        isPeak ? colorScheme.primary : colorScheme.primaryContainer,
+                    color: isPeak
+                        ? colorScheme.primary
+                        : colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(7),
                   ),
                 ),
               ),
               const SizedBox(height: 5),
               Text(
-                labels[index],
+                point.label,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w700,
@@ -688,12 +741,20 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
             ],
           ),
         );
-      }),
+      }).toList(),
     );
   }
 
-  Widget _buildReviewCard(_DemoReview review, ColorScheme colorScheme) {
+  Widget _buildReviewCard(
+    Map<String, dynamic> review,
+    ColorScheme colorScheme,
+  ) {
     final textTheme = Theme.of(context).textTheme;
+    final rating = (review['rating'] as num?)?.toDouble();
+    final text = (review['text'] as String?)?.trim();
+    final author = (review['author'] as String?)?.trim();
+
+    if (text == null || text.isEmpty) return const SizedBox.shrink();
 
     return Container(
       width: double.infinity,
@@ -709,19 +770,23 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
         children: [
           Row(
             children: [
-              ...List.generate(
-                5,
-                (index) => Icon(
-                  Icons.star,
-                  size: 14,
-                  color: index < review.rating
-                      ? Colors.amber.shade700
-                      : colorScheme.outlineVariant,
+              if (rating != null) ...[
+                ...List.generate(
+                  5,
+                  (index) => Icon(
+                    Icons.star,
+                    size: 14,
+                    color: index < rating.round()
+                        ? Colors.amber.shade700
+                        : colorScheme.outlineVariant,
+                  ),
                 ),
-              ),
+              ],
               const Spacer(),
               Text(
-                'Google Maps',
+                author == null || author.isEmpty ? 'Google Maps' : author,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: textTheme.labelSmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
@@ -731,28 +796,123 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
           ),
           const SizedBox(height: 8),
           Text(
-            review.text,
+            text,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
             style: textTheme.bodyMedium?.copyWith(height: 1.4),
           ),
         ],
       ),
     );
   }
+
+  String? _todayHoursLabel() {
+    final hours = widget.foodCard.workingHours;
+    if (hours == null || hours.isEmpty) return null;
+
+    const keys = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+      'Sun',
+    ];
+
+    for (final key in keys) {
+      final value = hours[key];
+      if (value == null) continue;
+      if (value is String && value.trim().isNotEmpty) return '$key $value';
+      if (value is List && value.isNotEmpty) return '$key ${value.join(", ")}';
+    }
+
+    return hours.entries
+        .take(2)
+        .map((entry) => '${entry.key}: ${entry.value}')
+        .join(' · ');
+  }
+
+  List<_PopularTimePoint> _popularTimeBarsForToday() {
+    final popular = widget.foodCard.popularTimes;
+    if (popular == null) return const [];
+
+    if (popular is List) {
+      final selectedDay = _selectPopularTimeDay(popular);
+      if (selectedDay == null) return const [];
+
+      final rawPoints = selectedDay['popular_times'];
+      if (rawPoints is! List) return const [];
+
+      final points = rawPoints
+          .whereType<Map>()
+          .map((item) {
+            final percentage = (item['percentage'] as num?)?.toInt() ?? 0;
+            final hour = (item['hour'] as num?)?.toInt();
+            final label = (item['time'] as String?) ??
+                (hour == null ? '' : hour.toString());
+            return _PopularTimePoint(label: label, percentage: percentage);
+          })
+          .where((point) => point.percentage > 0)
+          .toList();
+
+      if (points.length <= 8) return points;
+
+      final step = (points.length / 8).ceil();
+      return [
+        for (var i = 0; i < points.length; i += step) points[i],
+      ].take(8).toList();
+    }
+
+    if (popular is Map) {
+      return popular.entries.take(8).map((entry) {
+        final value = entry.value;
+        final percentage = value is Map
+            ? (value['percentage'] as num?)?.toInt() ?? 0
+            : (value is num ? value.toInt() : 0);
+        return _PopularTimePoint(
+          label: entry.key.toString(),
+          percentage: percentage,
+        );
+      }).where((point) => point.percentage > 0).toList();
+    }
+
+    return const [];
+  }
+
+  Map<String, dynamic>? _selectPopularTimeDay(List<dynamic> days) {
+    if (days.isEmpty) return null;
+    final weekday = DateTime.now().weekday;
+    final googleDay = weekday == 7 ? 7 : weekday;
+
+    for (final item in days.whereType<Map>()) {
+      if ((item['day'] as num?)?.toInt() == googleDay) {
+        return Map<String, dynamic>.from(item);
+      }
+    }
+
+    for (final item in days.whereType<Map>()) {
+      return Map<String, dynamic>.from(item);
+    }
+    return null;
+  }
 }
 
-class _DemoMenuItem {
-  final String name;
-  final String description;
-  final String price;
+class _PopularTimePoint {
+  final String label;
+  final int percentage;
 
-  const _DemoMenuItem(this.name, this.description, this.price);
-}
-
-class _DemoReview {
-  final String text;
-  final int rating;
-
-  const _DemoReview(this.text, this.rating);
+  const _PopularTimePoint({
+    required this.label,
+    required this.percentage,
+  });
 }
 
 class _HeaderFact extends StatelessWidget {
@@ -788,6 +948,35 @@ class _HeaderFact extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SmallInfoPill extends StatelessWidget {
+  final String label;
+  final ColorScheme colorScheme;
+
+  const _SmallInfoPill({
+    required this.label,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w800,
+            ),
       ),
     );
   }

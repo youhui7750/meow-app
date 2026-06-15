@@ -2,7 +2,10 @@
 import 'package:flutter/gestures.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/models/food_card.dart';
+import 'package:meow_food_butler/repositories/restaurant_repository.dart';
+import 'package:meow_food_butler/services/outscraper_service.dart';
 import 'package:meow_food_butler/views/saved/food_card_detail.dart';
+import 'package:meow_food_butler/views/saved/widgets/experience_photo.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:provider/provider.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
@@ -110,25 +113,13 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
     );
   }
 
-  void _showRestaurantDetail(BuildContext context, ExperienceCard experience) {
-    final relatedFoodCard = FoodCard(
-      id: experience.foodCardId,
-      originalURL: experience.originalURL,
-      formattedAddress: experience.placeAddress,
-      rating: experience.personalRating,
-      displayNames: [
-        DisplayName(
-          title: experience.placeTitle ?? 'Unnamed restaurant',
-          languageCode: 'en',
-        ),
-      ],
-      location: experience.latitude != null && experience.longitude != null
-          ? LocationCoordinate(
-              latitude: experience.latitude,
-              longitude: experience.longitude,
-            )
-          : null,
-    );
+  Future<void> _showRestaurantDetail(
+    BuildContext context,
+    ExperienceCard experience,
+  ) async {
+    final relatedFoodCard = await _foodCardForExperience(experience);
+
+    if (!mounted || !context.mounted) return;
 
     showModalBottomSheet<void>(
       context: context,
@@ -158,6 +149,176 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
           },
         );
       },
+    );
+  }
+
+  Future<FoodCard> _foodCardForExperience(ExperienceCard experience) async {
+    try {
+      final repository = RestaurantRepository();
+      final restaurant =
+          await repository.findForExperience(experience);
+      if (restaurant != null) {
+        final enrichedRestaurant =
+            await _enrichRestaurantIfNeeded(restaurant, experience);
+        if (enrichedRestaurant != restaurant) {
+          await repository.saveRestaurant(enrichedRestaurant);
+        }
+        return _mergeRestaurantWithExperience(enrichedRestaurant, experience);
+      }
+
+      final fetchedRestaurant = await _fetchRestaurantForExperience(experience);
+      if (fetchedRestaurant != null) {
+        await repository.saveRestaurant(fetchedRestaurant);
+        return _mergeRestaurantWithExperience(fetchedRestaurant, experience);
+      }
+    } catch (_) {
+      // Fall back to the experience-only card when Firestore lookup fails.
+    }
+    return _foodCardFromExperience(experience);
+  }
+
+  Future<FoodCard> _enrichRestaurantIfNeeded(
+    FoodCard restaurant,
+    ExperienceCard experience,
+  ) async {
+    if (restaurant.reviewSnippets.isNotEmpty &&
+        restaurant.photoUrls.length >= 5 &&
+        restaurant.popularTimes != null) {
+      return restaurant;
+    }
+
+    final query = restaurant.primaryTitle.trim().isNotEmpty
+        ? restaurant.primaryTitle
+        : experience.placeTitle;
+    if (query == null || query.trim().isEmpty) return restaurant;
+
+    final service = OutscraperService();
+    final detail = restaurant.popularTimes == null
+        ? await service.fetchRestaurantDetail(query)
+        : null;
+    final baseRestaurant = detail ?? restaurant;
+    final reviews = restaurant.reviewSnippets.isNotEmpty
+        ? restaurant.reviewSnippets
+        : await service.fetchReviews(query, limit: 3);
+    final photoUrls = restaurant.photoUrls.length >= 5
+        ? restaurant.photoUrls
+        : _mergePhotoUrls(
+            _mergePhotoUrls(restaurant.photoUrls, baseRestaurant.photoUrls),
+            (await service.fetchPhotos(query, tag: 'menu', photosLimit: 5))
+                .map((photoMap) => photoMap['url'] as String? ?? '')
+                .where((url) => url.isNotEmpty)
+                .toList(),
+          );
+
+    return baseRestaurant.copyForImport(
+      originalURL: restaurant.originalURL,
+      visited: restaurant.visited,
+      tags: restaurant.tags,
+      photoUrls: photoUrls,
+      reviewSnippets: reviews,
+    );
+  }
+
+  Future<FoodCard?> _fetchRestaurantForExperience(
+    ExperienceCard experience,
+  ) async {
+    final query = experience.placeTitle?.trim();
+    if (query == null || query.isEmpty) return null;
+
+    final service = OutscraperService();
+    final detail = await service.fetchRestaurantDetail(query);
+    if (detail == null) return null;
+
+    final photoUrls = _mergePhotoUrls(
+      detail.photoUrls,
+      (await service.fetchPhotos(query, tag: 'menu', photosLimit: 5))
+          .map((photoMap) => photoMap['url'] as String? ?? '')
+          .where((url) => url.isNotEmpty)
+          .toList(),
+    );
+    final reviews = await service.fetchReviews(query, limit: 3);
+    return detail.copyForImport(
+      originalURL: experience.originalURL,
+      visited: experience.isDone,
+      tags: experience.personalTags,
+      photoUrls: photoUrls,
+      reviewSnippets: reviews,
+    );
+  }
+
+  List<String> _mergePhotoUrls(List<String> primary, List<String> secondary) {
+    final seen = <String>{};
+    final urls = <String>[];
+    for (final url in [...primary, ...secondary]) {
+      final trimmed = url.trim();
+      if (trimmed.isEmpty || seen.contains(trimmed)) continue;
+      seen.add(trimmed);
+      urls.add(trimmed);
+    }
+    return urls.take(5).toList();
+  }
+
+  FoodCard _foodCardFromExperience(ExperienceCard experience) {
+    return FoodCard(
+      id: experience.foodCardId ?? experience.placeId,
+      originalURL: experience.originalURL,
+      formattedAddress: experience.placeAddress,
+      rating: experience.personalRating > 0 ? experience.personalRating : null,
+      tags: experience.personalTags,
+      photoPaths: experience.photoPaths,
+      photoUrls: experience.photoUrls,
+      displayNames: [
+        DisplayName(
+          title: experience.placeTitle ?? 'Unnamed restaurant',
+          languageCode: 'en',
+        ),
+      ],
+      location: experience.latitude != null && experience.longitude != null
+          ? LocationCoordinate(
+              latitude: experience.latitude,
+              longitude: experience.longitude,
+            )
+          : null,
+    );
+  }
+
+  FoodCard _mergeRestaurantWithExperience(
+    FoodCard restaurant,
+    ExperienceCard experience,
+  ) {
+    final fallback = _foodCardFromExperience(experience);
+
+    return FoodCard(
+      id: restaurant.id ?? fallback.id,
+      originalURL: restaurant.originalURL ?? fallback.originalURL,
+      formattedAddress: restaurant.formattedAddress ?? fallback.formattedAddress,
+      rating: restaurant.rating ?? fallback.rating,
+      reviews: restaurant.reviews,
+      phone: restaurant.phone,
+      website: restaurant.website,
+      priceRange: restaurant.priceRange,
+      category: restaurant.category,
+      subtypes: restaurant.subtypes,
+      description: restaurant.description,
+      workingHours: restaurant.workingHours,
+      popularTimes: restaurant.popularTimes,
+      reviewSnippets: restaurant.reviewSnippets,
+      typicalTimeSpent: restaurant.typicalTimeSpent,
+      menuLink: restaurant.menuLink,
+      bookingLink: restaurant.bookingLink,
+      verified: restaurant.verified,
+      visited: restaurant.visited,
+      tags: restaurant.tags.isNotEmpty ? restaurant.tags : fallback.tags,
+      photoPaths: fallback.photoPaths.isNotEmpty
+          ? fallback.photoPaths
+          : restaurant.photoPaths,
+      photoUrls:
+          restaurant.photoUrls.isNotEmpty ? restaurant.photoUrls : fallback.photoUrls,
+      displayNames:
+          restaurant.displayNames.isNotEmpty ? restaurant.displayNames : fallback.displayNames,
+      location: restaurant.location ?? fallback.location,
+      createdTime: restaurant.createdTime,
+      updatedTime: restaurant.updatedTime,
     );
   }
 
@@ -680,9 +841,7 @@ class _MapRestaurantCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final imageUrl = experience.photoUrls.isEmpty
-        ? null
-        : experience.photoUrls.first;
+    final imageUrl = experience.photoUrls.isEmpty ? null : experience.photoUrls.first;
         
     final bool isOpen = true;
 
@@ -738,7 +897,14 @@ class _MapRestaurantCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: imageUrl == null
+                          child: mode == MapSheetMode.myPlaces
+                              ? ExperiencePhoto(
+                                  experience: experience,
+                                  width: 58,
+                                  height: 58,
+                                  borderRadius: 12,
+                                )
+                              : imageUrl == null
                               ? Container(
                                   width: 58,
                                   height: 58,

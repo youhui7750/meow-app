@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/experience_card.dart'; // 確保路徑指向你的 ExperienceCard
+import '../models/food_card.dart';
 import '../services/apify_service.dart';
 import '../services/ai_agent_service.dart';
 import '../services/outscraper_service.dart';
@@ -19,8 +20,8 @@ class InstagramImportViewModel extends ChangeNotifier {
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
-  /// 執行完整自動化管線，最終返回建構好的 ExperienceCard
-  Future<ExperienceCard?> pipelineImportAndBuildCard(String igUrl) async {
+  /// 執行完整自動化管線，最終返回餐廳卡與地圖暫存卡。
+  Future<InstagramImportResult?> pipelineImportAndBuildCard(String igUrl) async {
     _errorMessage = null;
     _isLoading = true;
     _loadingMessage = "正在透過 Apify 讀取 IG 貼文內容...";
@@ -38,23 +39,21 @@ class InstagramImportViewModel extends ChangeNotifier {
       // 2. AI 提取店家關鍵字
       _loadingMessage = "AI 正在分析內文，精準提取餐廳名稱...";
       notifyListeners();
-      final restaurantQuery = await _aiAgent.extractRestaurantName(caption, locationTag);
+      final restaurantQuery =
+          _queryFromLocationTag(locationTag) ??
+          await _aiAgent.extractRestaurantName(caption, locationTag);
       if (restaurantQuery == null) throw "AI 無法從內文中辨識出明確的餐廳名稱";
+      debugPrint("[DEBUG] Restaurant query: $restaurantQuery");
 
       // 3. Outscraper 查詢 Google Maps 詳細店訊
       _loadingMessage = "Outscraper 正在撈取 Google Maps 商家資訊...";
       notifyListeners();
       
-      // 這裡假設你另外寫了一個 _outscraper.searchGooglePlaces()
-      // 或者直接用原本 fetchReviews/fetchPhotos 回傳包裝好的店家基本屬性
-      // 為了示範，我們先用已知的 fetchPhotos 順便帶回的店訊做基底
+      final restaurantDetail = await _outscraper.fetchRestaurantDetail(
+        restaurantQuery,
+      );
       final menuPhotosRaw = await _outscraper.fetchPhotos(restaurantQuery, tag: "menu", photosLimit: 5);
-      
-      // 假設我們用已修正的 Outscraper 拿到了基本店訊
-      // 注意：Outscraper 撈回來的 key 通常包含商家經緯度與地址
-      // if (menuPhotosRaw.isEmpty) {
-      //   throw "在 Google 地圖上找不到「$restaurantQuery」的相關照片或店訊";
-      // }
+      final reviewSnippets = await _outscraper.fetchReviews(restaurantQuery, limit: 3);
 
       // 4. 自動從 IG 內文萃取 Hashtags 作為分類標籤 (個人小客製)
       List<String> tags = _extractHashtags(caption);
@@ -67,20 +66,23 @@ class InstagramImportViewModel extends ChangeNotifier {
           .map((photoMap) => photoMap["url"] as String)
           .where((url) => url.isNotEmpty)
           .toList();
+      extractedPhotoUrls = _mergePhotoUrls(
+        restaurantDetail?.photoUrls ?? const [],
+        extractedPhotoUrls,
+      );
 
       // 6. 🏆 正式建構你的 ExperienceCard
       _loadingMessage = "正在產生您的用餐體驗小卡...";
       notifyListeners();
 
-      // 💡 假定 Outscraper 或你原本的搜尋能提供經緯度與地址，這裡做對應塞入：
       final newCard = ExperienceCard(
         id: null, // 給 Firestore 自動生成 doc ID
         foodCardId: null, // 後續看你要不要綁定特定的主餐廳 ID
-        placeId: "ChIJ_derived_from_outscraper_or_search", // 建議從 Outscraper 基礎搜尋帶入
-        placeTitle: restaurantQuery.split(' ').first, // 去掉城市，純取店名例如 "圍爐烤肉"
-        placeAddress: "台北市萬華區長沙街二段126號1樓", // 實際上從 Outscraper response 取得
-        latitude: 25.0423, // 實際上從 Outscraper response 取得
-        longitude: 121.5065, // 實際上從 Outscraper response 取得
+        placeId: restaurantDetail?.id,
+        placeTitle: restaurantDetail?.primaryTitle ?? restaurantQuery,
+        placeAddress: restaurantDetail?.formattedAddress,
+        latitude: restaurantDetail?.location?.latitude,
+        longitude: restaurantDetail?.location?.longitude,
         originalURL: igUrl,
         photoPaths: const [], // 剛匯入時尚未上傳至自己 Firebase Storage
         photoUrls: extractedPhotoUrls, // 這裡直接帶入 Outscraper 抓到的 5 張菜單相片網址！
@@ -94,7 +96,34 @@ class InstagramImportViewModel extends ChangeNotifier {
       _isLoading = false;
       _loadingMessage = "";
       notifyListeners();
-      return newCard;
+      return InstagramImportResult(
+        experience: newCard,
+        restaurant: (restaurantDetail ??
+                FoodCard(
+                  id: null,
+                  originalURL: igUrl,
+                  formattedAddress: newCard.placeAddress,
+                  visited: false,
+                  tags: tags,
+                  photoUrls: extractedPhotoUrls,
+                  displayNames: [
+                    DisplayName(title: newCard.placeTitle, languageCode: 'zh-TW'),
+                  ],
+                  location: newCard.latitude != null && newCard.longitude != null
+                      ? LocationCoordinate(
+                          latitude: newCard.latitude,
+                          longitude: newCard.longitude,
+                        )
+                      : null,
+                ))
+            .copyForImport(
+          originalURL: igUrl,
+          visited: false,
+          tags: tags,
+          photoUrls: extractedPhotoUrls,
+          reviewSnippets: reviewSnippets,
+        ),
+      );
 
     } catch (e) {
       _isLoading = false;
@@ -111,4 +140,39 @@ class InstagramImportViewModel extends ChangeNotifier {
     final matches = exp.allMatches(text);
     return matches.map((m) => m.group(1)!).toList();
   }
+
+  String? _queryFromLocationTag(String locationTag) {
+    final query = locationTag.trim();
+    if (query.isEmpty) return null;
+    final lower = query.toLowerCase();
+    if (lower == 'null' ||
+        lower == 'unknown' ||
+        lower == 'instagram' ||
+        lower == 'none') {
+      return null;
+    }
+    return query;
+  }
+
+  List<String> _mergePhotoUrls(List<String> base, List<String> extra) {
+    final seen = <String>{};
+    final merged = <String>[];
+    for (final url in [...base, ...extra]) {
+      final trimmed = url.trim();
+      if (trimmed.isEmpty || seen.contains(trimmed)) continue;
+      seen.add(trimmed);
+      merged.add(trimmed);
+    }
+    return merged;
+  }
+}
+
+class InstagramImportResult {
+  final ExperienceCard experience;
+  final FoodCard restaurant;
+
+  const InstagramImportResult({
+    required this.experience,
+    required this.restaurant,
+  });
 }

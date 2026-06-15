@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
+import 'package:meow_food_butler/repositories/restaurant_repository.dart';
 import 'package:meow_food_butler/services/current_map_position.dart';
 import 'package:meow_food_butler/services/distance_service.dart';
 import 'package:meow_food_butler/services/shared_url_notifier.dart';
@@ -10,6 +11,7 @@ import 'package:meow_food_butler/view_models/instagram_import_vm.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
 import 'package:meow_food_butler/views/map/widgets/import_dialog.dart';
 import 'package:meow_food_butler/views/map/widgets/restaurant_list_sheet.dart';
+import 'package:meow_food_butler/views/map/settings_screen.dart';
 import 'package:meow_food_butler/views/saved/saved_screen.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:provider/provider.dart';
@@ -324,7 +326,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
   }
 
   Future<void> _openImportDialog({String? initialUrl}) async {
-    final newExperience = await showDialog<ExperienceCard>(
+    final importResult = await showDialog<InstagramImportResult>(
       context: context,
       barrierDismissible: false,
       builder: (context) => ChangeNotifierProvider(
@@ -333,7 +335,18 @@ class _MainMapScreenState extends State<MainMapScreen> {
       ),
     );
 
-    if (newExperience != null && mounted) {
+    if (importResult != null && mounted) {
+      final newExperience = importResult.experience;
+      try {
+        await RestaurantRepository().saveRestaurant(importResult.restaurant);
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Restaurant card sync failed: $error')),
+          );
+        }
+      }
+
       setState(() {
         _sheetMode = MapSheetMode.imported;
         _importedCandidates.insert(0, newExperience);
@@ -791,6 +804,24 @@ class _MainMapScreenState extends State<MainMapScreen> {
                     ),
                   );
                 },
+              ),
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 16,
+                right: 16,
+                child: PointerInterceptor(
+                  child: FloatingActionButton.small(
+                    heroTag: 'map-settings',
+                    tooltip: '設定',
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const SettingsScreen(),
+                        ),
+                      );
+                    },
+                    child: const Icon(Icons.settings_outlined),
+                  ),
+                ),
               ),
               AnimatedBuilder(
                 animation: _sheetController,

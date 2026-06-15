@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:meow_food_butler/models/food_card.dart';
 import 'package:http/http.dart' as http;
 
 class OutscraperService {
@@ -33,12 +34,93 @@ class OutscraperService {
       q = await _expandUrl(q);
     }
 
-    // Place ID（無空白、不是 http 開頭）→ 轉成完整 Maps URL
-    if (!q.startsWith("http") && !q.contains(" ")) {
+    // Google Place ID → 轉成完整 Maps URL；一般中文店名不要誤判成 place_id。
+    if (!q.startsWith("http") && _looksLikePlaceId(q)) {
       q = "https://www.google.com/maps/place/?q=place_id:$q";
     }
     
     return q;
+  }
+
+  bool _looksLikePlaceId(String value) {
+    final trimmed = value.trim();
+    return trimmed.startsWith("ChIJ") ||
+        RegExp(r'^[A-Za-z0-9_-]{24,}$').hasMatch(trimmed);
+  }
+
+  /// 抓取 Google Maps 店家基本資料，轉成 app 的餐廳卡 FoodCard。
+  Future<FoodCard?> fetchRestaurantDetail(String query) async {
+    final processedQuery = await _prepareQuery(query);
+    print("🔍 送出店家資料查詢：$processedQuery");
+
+    final uri = Uri.parse(
+      "https://api.app.outscraper.com/maps/search-v3",
+    ).replace(
+      queryParameters: {
+        "query": processedQuery,
+        "limit": "1",
+        "language": "zh-tw",
+        "async": "false",
+      },
+    );
+
+    try {
+      final response = await http.get(
+        uri,
+        headers: {"X-API-KEY": _apiKey},
+      ).timeout(const Duration(seconds: 120));
+
+      print("📡 Outscraper 店家資料 API 回應狀態碼: ${response.statusCode}");
+      if (response.statusCode != 200) {
+        print("❌ 店家資料錯誤: ${response.body}");
+        return null;
+      }
+
+      final data = jsonDecode(response.body);
+      final placeData = _firstPlaceData(data["data"]);
+      if (placeData == null) {
+        print("❌ 店家資料回傳 data 為空");
+        return null;
+      }
+
+      final name = _readString(placeData, "name") ?? query.trim();
+      final latitude = _readDouble(placeData, "latitude");
+      final longitude = _readDouble(placeData, "longitude");
+      final photoUrl = _readString(placeData, "photo");
+
+      return FoodCard(
+        id: _readString(placeData, "place_id") ??
+            _readString(placeData, "google_id") ??
+            _readString(placeData, "cid"),
+        formattedAddress: _readString(placeData, "address"),
+        rating: _readDouble(placeData, "rating"),
+        reviews: _readInt(placeData, "reviews"),
+        phone: _readString(placeData, "phone"),
+        website: _readString(placeData, "website"),
+        priceRange:
+            _readString(placeData, "range") ?? _readString(placeData, "prices"),
+        category:
+            _readString(placeData, "category") ?? _readString(placeData, "type"),
+        subtypes: _readStringList(placeData["subtypes"]),
+        description: _readString(placeData, "description"),
+        workingHours: _readMap(placeData, "working_hours"),
+        popularTimes: placeData["popular_times"],
+        typicalTimeSpent: _readString(placeData, "typical_time_spent"),
+        menuLink: _readString(placeData, "menu_link"),
+        bookingLink: _readString(placeData, "booking_appointment_link"),
+        verified: placeData["verified"] as bool?,
+        photoUrls: photoUrl == null || photoUrl.isEmpty ? const [] : [photoUrl],
+        displayNames: [
+          DisplayName(title: name, languageCode: "zh-TW"),
+        ],
+        location: latitude != null && longitude != null
+            ? LocationCoordinate(latitude: latitude, longitude: longitude)
+            : null,
+      );
+    } catch (e) {
+      print("❌ fetchRestaurantDetail 發生異常: $e");
+      return null;
+    }
   }
 
   /// 功能一：抓取 Google Maps 商家評論 (reviewsLimit 帶 0 代表全部)
@@ -158,5 +240,62 @@ class OutscraperService {
       print("❌ fetchPhotos 發生異常: $e");
       return [];
     }
+  }
+
+  Map<String, dynamic>? _firstPlaceData(dynamic data) {
+    if (data is! List || data.isEmpty) return null;
+    dynamic first = data.first;
+    while (first is List && first.isNotEmpty) {
+      first = first.first;
+    }
+    if (first is Map<String, dynamic>) return first;
+    if (first is Map) return Map<String, dynamic>.from(first);
+    return null;
+  }
+
+  String? _readString(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return null;
+    if (value is String) return value.trim().isEmpty ? null : value;
+    return value.toString();
+  }
+
+  double? _readDouble(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  int? _readInt(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  Map<String, dynamic>? _readMap(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  List<String> _readStringList(dynamic value) {
+    if (value == null) return const [];
+    if (value is String) {
+      return value
+          .split(RegExp(r'[,、]'))
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+    if (value is List) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+    return const [];
   }
 }
