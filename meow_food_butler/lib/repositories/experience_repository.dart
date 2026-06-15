@@ -43,7 +43,7 @@ class ExperienceRepository {
         });
   }
 
-  Future<void> addExperience(
+  Future<ExperienceCard> addExperience(
     ExperienceCard experience, {
     List<XFile> photos = const [],
   }) async {
@@ -62,6 +62,7 @@ class ExperienceRepository {
       'createdTime': FieldValue.serverTimestamp(),
       'updatedTime': FieldValue.serverTimestamp(),
     });
+    return savedExperience;
   }
 
   Future<void> updateExperience(

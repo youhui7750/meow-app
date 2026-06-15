@@ -91,8 +91,19 @@ class ScaffoldWithNestedNavigation extends StatelessWidget {
   });
 
   void _onTap(int index) {
-    // Always reset the branch to its root when switching tabs so that detail
-    // screens (e.g. a Saved record) don't persist across tab switches.
+    // Pop the current branch's own Flutter navigator to root BEFORE switching.
+    // goBranch only resets GoRouter's routing state, not the underlying
+    // Navigator stack — so screens pushed via Navigator.push() (e.g.
+    // ExperienceDetailScreen) would otherwise survive the tab switch.
+    final branchKeys = [
+      _mapNavigatorKey,
+      _chatNavigatorKey,
+      _savedNavigatorKey,
+    ];
+    final currentKey = branchKeys[navigationShell.currentIndex];
+    if (currentKey.currentState?.canPop() == true) {
+      currentKey.currentState!.popUntil((route) => route.isFirst);
+    }
     navigationShell.goBranch(index, initialLocation: true);
   }
 

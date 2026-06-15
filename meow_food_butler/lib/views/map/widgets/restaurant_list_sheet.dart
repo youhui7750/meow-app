@@ -168,10 +168,6 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
         return _mergeRestaurantWithExperience(restaurant, experience);
       }
 
-      if (widget.mode == MapSheetMode.myPlaces) {
-        return _foodCardFromExperience(experience);
-      }
-
       // Not in Firestore — fall back to Outscraper ONCE: persist the restaurant
       // and link it back to the experience so the next open is a Firestore read,
       // never another Outscraper call.

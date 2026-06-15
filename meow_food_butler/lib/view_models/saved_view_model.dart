@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
+import 'package:meow_food_butler/models/food_card.dart';
 import 'package:meow_food_butler/repositories/experience_repository.dart';
+import 'package:meow_food_butler/repositories/restaurant_repository.dart';
+import 'package:meow_food_butler/services/restaurant_lookup_service.dart';
 
 class SavedViewModel extends ChangeNotifier {
   final ExperienceRepository _repository;
@@ -107,8 +110,74 @@ class SavedViewModel extends ChangeNotifier {
       _experiences.insert(0, experience);
       notifyListeners();
     }
-    await _runSaveAction(
-      () => _repository.addExperience(experience, photos: photos),
+    ExperienceCard? saved;
+    await _runSaveAction(() async {
+      saved = await _repository.addExperience(experience, photos: photos);
+    });
+    // Fire-and-forget: ensure a FoodCard exists so Saved tab has Google data
+    if (saved != null) { unawaited(_ensureFoodCard(saved!)); }
+  }
+
+  /// Checks if a FoodCard already exists for [experience] in Firestore; if not,
+  /// fetches one from Outscraper and saves it, then links it back to the
+  /// experience so future opens skip the API call entirely.
+  Future<void> _ensureFoodCard(ExperienceCard experience) async {
+    if (experience.foodCardId != null && experience.foodCardId!.isNotEmpty) return;
+    final expId = experience.id;
+    if (expId == null || expId.isEmpty) return;
+
+    try {
+      final restaurantRepo = RestaurantRepository();
+      final existing = await restaurantRepo.findForExperience(experience);
+      if (existing != null) {
+        await ExperienceRepository().linkFoodCard(expId, existing.id ?? '');
+        return;
+      }
+
+      final fetched = await _fetchForExperience(experience);
+      if (fetched == null) return;
+
+      final savedId = await restaurantRepo.saveRestaurant(fetched);
+      if (savedId.isNotEmpty) {
+        await ExperienceRepository().linkFoodCard(expId, savedId);
+      }
+    } catch (_) {
+      // Background — never surface errors to the UI
+    }
+  }
+
+  /// Resolves lookup priority: placeId → googleMapsUrl → name + address query.
+  Future<FoodCard?> _fetchForExperience(ExperienceCard experience) async {
+    final placeId = experience.placeId?.trim();
+    final mapsUrl = experience.googleMapsUrl?.trim();
+
+    final String? effectivePlaceId;
+    final String? effectiveQuery;
+
+    if (placeId != null && placeId.isNotEmpty) {
+      effectivePlaceId = placeId;
+      effectiveQuery = experience.placeTitle?.trim();
+    } else if (mapsUrl != null && mapsUrl.isNotEmpty) {
+      effectivePlaceId = mapsUrl;
+      effectiveQuery = experience.placeTitle?.trim();
+    } else {
+      effectivePlaceId = null;
+      final parts = [experience.placeTitle?.trim(), experience.placeAddress?.trim()]
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .toList();
+      effectiveQuery = parts.isNotEmpty ? parts.join(', ') : null;
+    }
+
+    if (effectivePlaceId == null &&
+        (effectiveQuery == null || effectiveQuery.isEmpty)) return null;
+
+    return RestaurantLookupService().fetch(
+      placeId: effectivePlaceId,
+      query: effectiveQuery,
+      originalURL: experience.originalURL,
+      tags: experience.personalTags,
+      visited: experience.isDone,
     );
   }
 
