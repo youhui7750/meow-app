@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:meow_food_butler/models/chat_message.dart';
 import 'package:meow_food_butler/models/chat_session.dart';
+import 'package:meow_food_butler/models/experience_card.dart';
+import 'package:meow_food_butler/models/food_card.dart';
+import 'package:meow_food_butler/repositories/restaurant_repository.dart';
 import 'package:meow_food_butler/services/ai_agent_service.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
 import 'package:meow_food_butler/views/saved/experience_detail_screen.dart';
@@ -130,6 +133,8 @@ class _ChatState extends State<Chat> {
                       (m) =>
                           (m.type == ChatMessageType.experienceCard &&
                               m.experienceId != null) ||
+                          (m.type == ChatMessageType.restaurantCards &&
+                              m.recommendedSpotIds?.isNotEmpty == true) ||
                           m.text.trim().isNotEmpty,
                     )
                     .toList();
@@ -154,6 +159,12 @@ class _ChatState extends State<Chat> {
                         message.experienceId != null) {
                       return _ExperienceCardBubble(
                         experienceId: message.experienceId!,
+                      );
+                    }
+                    if (message.type == ChatMessageType.restaurantCards &&
+                        message.recommendedSpotIds?.isNotEmpty == true) {
+                      return _RestaurantCardsBubbleV2(
+                        restaurantIds: message.recommendedSpotIds!,
                       );
                     }
                     return _MessageBubble(
@@ -271,6 +282,276 @@ class _ExperienceCardBubble extends StatelessWidget {
                   ),
                 ),
               ),
+      ),
+    );
+  }
+}
+
+/// Inline restaurant-card results from My Places / imported URLs. The backend
+/// sends ExperienceCard ids for now because imported restaurants are stored in
+/// the same collection as saved dining entries.
+class _RestaurantCardsBubble extends StatelessWidget {
+  final List<String> restaurantIds;
+
+  const _RestaurantCardsBubble({required this.restaurantIds});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final savedViewModel = context.watch<SavedViewModel>();
+    final experiences = restaurantIds
+        .map(savedViewModel.experienceById)
+        .whereType<ExperienceCard>()
+        .toList();
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.86,
+        ),
+        margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: experiences.isEmpty
+            ? Text(
+                'These restaurant cards are no longer available.',
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '想去清單',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...experiences.map(
+                    (experience) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: ExperienceCardTile(
+                        experience: experience,
+                        onTap: () {
+                          final id = experience.id;
+                          if (id == null) return;
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  ExperienceDetailScreen(experienceId: id),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _RestaurantCardsBubbleV2 extends StatelessWidget {
+  final List<String> restaurantIds;
+
+  const _RestaurantCardsBubbleV2({required this.restaurantIds});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final repository = RestaurantRepository();
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.86,
+        ),
+        margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: FutureBuilder<List<FoodCard>>(
+          future: repository.restaurantsByIds(restaurantIds),
+          builder: (context, snapshot) {
+            final restaurants = snapshot.data ?? const <FoodCard>[];
+            if (snapshot.connectionState != ConnectionState.done) {
+              return Text(
+                'Loading restaurant cards...',
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              );
+            }
+            if (restaurants.isEmpty) {
+              return _RestaurantCardsBubble(restaurantIds: restaurantIds);
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '想去清單',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                ...restaurants.map(
+                  (restaurant) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _FoodCardTile(restaurant: restaurant),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _FoodCardTile extends StatelessWidget {
+  final FoodCard restaurant;
+
+  const _FoodCardTile({required this.restaurant});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final imageUrl =
+        restaurant.photoUrls.isEmpty ? null : restaurant.photoUrls.first;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: imageUrl == null
+                ? Container(
+                    width: 58,
+                    height: 58,
+                    color: colorScheme.primary,
+                    child: Icon(Icons.restaurant, color: colorScheme.onPrimary),
+                  )
+                : Image.network(
+                    imageUrl,
+                    width: 58,
+                    height: 58,
+                    fit: BoxFit.cover,
+                    webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 58,
+                      height: 58,
+                      color: colorScheme.primary,
+                      child:
+                          Icon(Icons.restaurant, color: colorScheme.onPrimary),
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  restaurant.primaryTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (restaurant.rating != null)
+                      Text(
+                        '★ ${restaurant.rating!.toStringAsFixed(1)}',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: Colors.amber.shade800,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    if (restaurant.priceRange?.isNotEmpty == true)
+                      Text(
+                        restaurant.priceRange!,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    Text(
+                      restaurant.visited ? '已去過' : '想去',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+                if (restaurant.formattedAddress?.isNotEmpty == true) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    restaurant.formattedAddress!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (restaurant.tags.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: restaurant.tags.take(3).map((tag) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(99),
+                          border: Border.all(color: colorScheme.outlineVariant),
+                        ),
+                        child: Text(
+                          '#$tag',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

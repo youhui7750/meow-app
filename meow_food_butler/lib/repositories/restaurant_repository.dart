@@ -18,14 +18,20 @@ class RestaurantRepository {
       _firestore.collection('users').doc(_demoUid).collection('restaurants');
 
   Stream<List<FoodCard>> watchRestaurants() {
-    return _collection
-        .orderBy('createdTime', descending: true)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => FoodCard.fromMap(doc.data(), doc.id))
-              .toList(),
-        );
+    return _collection.snapshots().map((snapshot) {
+      final restaurants = snapshot.docs
+          .map((doc) => FoodCard.fromMap(doc.data(), doc.id))
+          .toList();
+      restaurants.sort((a, b) {
+        final aTime = a.createdTime;
+        final bTime = b.createdTime;
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+        return bTime.compareTo(aTime);
+      });
+      return restaurants;
+    });
   }
 
   Future<List<FoodCard>> restaurantsByIds(List<String> ids) async {

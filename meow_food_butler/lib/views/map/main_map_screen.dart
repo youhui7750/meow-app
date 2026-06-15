@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
+import 'package:meow_food_butler/models/food_card.dart';
 import 'package:meow_food_butler/repositories/restaurant_repository.dart';
 import 'package:meow_food_butler/services/current_map_position.dart';
 import 'package:meow_food_butler/services/distance_service.dart';
@@ -514,10 +515,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
     return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
   }
 
-  List<ExperienceCard> _mapExperiences(
-    List<ExperienceCard> experiences, {
-    bool groupImportedBySource = false,
-  }) {
+  List<ExperienceCard> _mapExperiences(List<ExperienceCard> experiences) {
     final deduped = <String, ExperienceCard>{};
 
     for (final experience in experiences) {
@@ -525,11 +523,9 @@ class _MainMapScreenState extends State<MainMapScreen> {
         continue;
       }
 
-      final key =
-          (groupImportedBySource ? experience.originalURL : null) ??
-          experience.placeId ??
-          experience.foodCardId ??
+      final coordinateKey =
           '${experience.placeTitle ?? 'unknown'}-${experience.latitude}-${experience.longitude}';
+      final key = experience.placeId ?? experience.foodCardId ?? coordinateKey;
 
       final current = deduped[key];
 
@@ -545,6 +541,26 @@ class _MainMapScreenState extends State<MainMapScreen> {
 
   bool _isImportedExperience(ExperienceCard experience) {
     return experience.originalURL?.trim().isNotEmpty == true;
+  }
+
+  ExperienceCard _experienceFromRestaurant(FoodCard restaurant) {
+    return ExperienceCard(
+      id: 'restaurant-${restaurant.id ?? restaurant.primaryTitle}',
+      foodCardId: restaurant.id,
+      placeId: restaurant.id,
+      placeTitle: restaurant.primaryTitle,
+      placeAddress: restaurant.formattedAddress,
+      latitude: restaurant.location?.latitude,
+      longitude: restaurant.location?.longitude,
+      originalURL: restaurant.originalURL,
+      photoPaths: restaurant.photoPaths,
+      photoUrls: restaurant.photoUrls,
+      personalTags: restaurant.tags,
+      personalRating: restaurant.rating ?? 0,
+      personalNote: restaurant.description,
+      isDone: restaurant.visited,
+      createdTime: restaurant.createdTime,
+    );
   }
 
   double? _distanceMetersTo(ExperienceCard experience) {
@@ -734,14 +750,43 @@ class _MainMapScreenState extends State<MainMapScreen> {
   @override
   Widget build(BuildContext context) {
     final savedExperiences = context.watch<SavedViewModel>().experiences;
+    return StreamBuilder<List<FoodCard>>(
+      stream: RestaurantRepository().watchRestaurants(),
+      builder: (context, snapshot) {
+        return _buildMapScaffold(
+          context,
+          savedExperiences,
+          snapshot.data ?? const <FoodCard>[],
+        );
+      },
+    );
+  }
+
+  Widget _buildMapScaffold(
+    BuildContext context,
+    List<ExperienceCard> savedExperiences,
+    List<FoodCard> restaurants,
+  ) {
+    final restaurantExperiences = restaurants
+        .map(_experienceFromRestaurant)
+        .where(
+          (experience) =>
+              experience.latitude != null && experience.longitude != null,
+        )
+        .toList();
     final importedExperiences = _mapExperiences(
       [
         ..._importedCandidates,
+        ...restaurantExperiences.where((experience) => !experience.isDone),
         ...savedExperiences.where(_isImportedExperience),
       ],
-      groupImportedBySource: true,
     );
-    final myPlaceExperiences = _sortMyPlaces(_mapExperiences(savedExperiences));
+    final myPlaceExperiences = _sortMyPlaces(
+      _mapExperiences([
+        ...restaurantExperiences.where((experience) => experience.isDone),
+        ...savedExperiences.where((experience) => !_isImportedExperience(experience)),
+      ]),
+    );
     final mapExperiences = _sheetMode == MapSheetMode.imported
         ? importedExperiences
         : myPlaceExperiences;

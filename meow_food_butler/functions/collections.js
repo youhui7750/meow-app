@@ -34,6 +34,9 @@ const prefsDoc = (uid) => userRef(uid).collection("preferences").doc("profile");
 // Saved dining-log cards. Written by the client (ExperienceRepository); the
 // agent reads them to answer "show my last meal" / "the last time I ate X".
 const experiencesCol = (uid) => userRef(uid).collection("experiences");
+// Restaurant cards for My Places / imported links. These are the canonical
+// "want-to-go" and restaurant metadata cards.
+const restaurantsCol = (uid) => userRef(uid).collection("restaurants");
 
 // Server-only config (e.g. rotating API keys). Locked from clients in
 // firestore.rules; the Admin SDK here bypasses rules. Edit via the console.
@@ -49,5 +52,6 @@ module.exports = {
   memoryCol,
   prefsDoc,
   experiencesCol,
+  restaurantsCol,
   configDoc,
 };

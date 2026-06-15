@@ -14,6 +14,7 @@ const { defineRemember } = require("./remember");
 const { defineForget } = require("./forget");
 const { defineSetPreference } = require("./set-preference");
 const { defineSearchSpots } = require("./search-spots");
+const { defineSearchMyPlaces } = require("./search-my-places");
 const { defineRouteDistance } = require("./route-distance");
 const { defineDraftExperience } = require("./draft-experience");
 const { defineViewDiningLog } = require("./view-dining-log");
@@ -32,6 +33,7 @@ function registerTools(ai, opts = {}) {
     defineRemember(ai),
     defineForget(ai),
     defineSetPreference(ai),
+    defineSearchMyPlaces(ai),
     defineSearchSpots(ai, { placesApiKey: opts.placesApiKey || "" }),
     defineRouteDistance(ai),
     defineDraftExperience(ai),

@@ -7,6 +7,7 @@ enum ChatMessageType {
   recommendation, // Special layout containing a button linking to the swipe stack
   actionTimeline, // System messages (e.g., "AI Cat scheduled Friday at 7:00 PM")
   experienceCard, // Inline dining-log card (references an ExperienceCard by id)
+  restaurantCards, // Inline saved/imported restaurant cards by ExperienceCard ids
 }
 
 class ChatMessage {

@@ -7,6 +7,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/services/nearby_places_service.dart';
+import 'package:meow_food_butler/view_models/app_settings_view_model.dart';
+import 'package:provider/provider.dart';
 
 class ExperienceEntrySheet extends StatefulWidget {
   final ExperienceCard? initialExperience;
@@ -78,6 +80,31 @@ class _ExperienceEntrySheetState extends State<ExperienceEntrySheet> {
       }
     }
 
+    return tags;
+  }
+
+  List<_QuickTagGroup> _visibleQuickTagGroups(
+    List<AppTagGroup> quickTagGroups,
+  ) {
+    final groups = <_QuickTagGroup>[];
+
+    for (final group in quickTagGroups) {
+      final tags = _availableQuickTags(group.tags);
+      if (tags.isNotEmpty) {
+        groups.add(_QuickTagGroup(group.label, tags));
+      }
+    }
+
+    return groups;
+  }
+
+  List<String> _availableQuickTags(Iterable<String> rawTags) {
+    final tags = <String>[];
+    for (final rawTag in rawTags) {
+      final tag = rawTag.trim();
+      if (tag.isEmpty || _tags.contains(tag) || tags.contains(tag)) continue;
+      tags.add(tag);
+    }
     return tags;
   }
 
@@ -536,6 +563,10 @@ class _ExperienceEntrySheetState extends State<ExperienceEntrySheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final quickTagGroups = context
+        .watch<AppSettingsViewModel>()
+        .quickTagGroups;
+    final visibleQuickTagGroups = _visibleQuickTagGroups(quickTagGroups);
 
     return SafeArea(
       child: Padding(
@@ -792,20 +823,16 @@ class _ExperienceEntrySheetState extends State<ExperienceEntrySheet> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      _SectionLabel('Quick add'),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _quickAddTags
-                            .map(
-                              (tag) => ActionChip(
-                                label: Text('+ $tag'),
-                                onPressed: () => _addTag(tag),
-                              ),
-                            )
-                            .toList(),
-                      ),
+                      if (visibleQuickTagGroups.isNotEmpty) ...[
+                        _SectionLabel('Quick add'),
+                        const SizedBox(height: 8),
+                        ...visibleQuickTagGroups.map(
+                          (group) => _QuickTagGroupChips(
+                            group: group,
+                            onSelected: _addTag,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 20),
                     ],
                   ),
@@ -823,6 +850,58 @@ class _LocationException implements Exception {
   final String message;
 
   const _LocationException(this.message);
+}
+
+class _QuickTagGroup {
+  final String label;
+  final List<String> tags;
+
+  const _QuickTagGroup(this.label, this.tags);
+}
+
+class _QuickTagGroupChips extends StatelessWidget {
+  final _QuickTagGroup group;
+  final ValueChanged<String> onSelected;
+
+  const _QuickTagGroupChips({
+    required this.group,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            group.label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: group.tags
+                .map(
+                  (tag) => ActionChip(
+                    label: Text('+ $tag'),
+                    onPressed: () => onSelected(tag),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 List<String> _locationParts(List<String?> values) {

@@ -162,6 +162,10 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
         return _mergeRestaurantWithExperience(restaurant, experience);
       }
 
+      if (widget.mode == MapSheetMode.myPlaces) {
+        return _foodCardFromExperience(experience);
+      }
+
       // Not in Firestore — fall back to Outscraper.
       final fetchedRestaurant = await _fetchRestaurantForExperience(experience);
       if (fetchedRestaurant != null) {
@@ -756,15 +760,20 @@ class _SegmentButton extends StatelessWidget {
             color: selected ? colorScheme.primary : Colors.transparent,
             borderRadius: BorderRadius.circular(9),
           ),
-          child: Text(
-            '$label  $count',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: selected
-                  ? colorScheme.onPrimary
-                  : colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w900,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '$label  $count',
+                maxLines: 1,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: selected
+                      ? colorScheme.onPrimary
+                      : colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
           ),
         ),
@@ -852,41 +861,11 @@ class _MapRestaurantCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: mode == MapSheetMode.myPlaces
-                              ? ExperiencePhoto(
-                                  experience: experience,
-                                  width: 58,
-                                  height: 58,
-                                  borderRadius: 12,
-                                )
-                              : imageUrl == null
-                              ? Container(
-                                  width: 58,
-                                  height: 58,
-                                  color: colorScheme.primary,
-                                  child: Icon(
-                                    Icons.restaurant,
-                                    color: colorScheme.onPrimary,
-                                  ),
-                                )
-                              : Image.network(
-                                  imageUrl,
-                                  width: 58,
-                                  height: 58,
-                                  fit: BoxFit.cover,
-                                  webHtmlElementStrategy:
-                                      WebHtmlElementStrategy.prefer,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Container(
-                                    width: 58,
-                                    height: 58,
-                                    color: colorScheme.primary,
-                                    child: Icon(
-                                      Icons.restaurant,
-                                      color: colorScheme.onPrimary,
-                                    ),
-                                  ),
-                                ),
+                          child: _MapCardThumbnail(
+                            experience: experience,
+                            mode: mode,
+                            imageUrl: imageUrl,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -1082,6 +1061,55 @@ class _MapRestaurantCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MapCardThumbnail extends StatelessWidget {
+  final ExperienceCard experience;
+  final MapSheetMode mode;
+  final String? imageUrl;
+
+  const _MapCardThumbnail({
+    required this.experience,
+    required this.mode,
+    required this.imageUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    Widget fallback() {
+      return Container(
+        width: 58,
+        height: 58,
+        color: colorScheme.primary,
+        child: Icon(
+          Icons.restaurant,
+          color: colorScheme.onPrimary,
+        ),
+      );
+    }
+
+    if (mode == MapSheetMode.myPlaces && experience.photoPaths.isNotEmpty) {
+      return ExperiencePhoto(
+        experience: experience,
+        width: 58,
+        height: 58,
+        borderRadius: 12,
+      );
+    }
+
+    if (imageUrl == null) return fallback();
+
+    return Image.network(
+      imageUrl!,
+      width: 58,
+      height: 58,
+      fit: BoxFit.cover,
+      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+      errorBuilder: (context, error, stackTrace) => fallback(),
     );
   }
 }

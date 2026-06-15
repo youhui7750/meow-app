@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:meow_food_butler/models/chat_message.dart';
 import 'package:meow_food_butler/models/chat_session.dart';
@@ -197,6 +198,8 @@ class ChatService {
         _pending = [];
         // Apply any client UI actions the agent requested this turn (e.g. show
         // a dining-log card its viewDiningLog tool looked up).
+        // ignore: avoid_print
+        print('[DEBUG] chatWithButler actions: ${data['actions']}');
         _applyActions(data['actions']);
       } else {
         // Not persisted on the backend (e.g. quota / key error) — keep the
@@ -252,6 +255,19 @@ class ChatService {
         if (id is String && id.isNotEmpty && seen.add(id)) {
           showExperienceCard(id);
         }
+      } else if (action['type'] == 'showRestaurantCards') {
+        final ids = action['experienceIds'] ??
+            action['ids'] ??
+            action['recommendedSpotIds'];
+        if (ids is List) {
+          final experienceIds = ids
+              .whereType<String>()
+              .where((id) => id.isNotEmpty && seen.add(id))
+              .toList();
+          if (experienceIds.isNotEmpty) {
+            showRestaurantCards(experienceIds);
+          }
+        }
       }
     }
   }
@@ -266,6 +282,25 @@ class ChatService {
         messageText: '',
         type: ChatMessageType.experienceCard,
         experienceId: experienceId,
+      ),
+      ..._local,
+    ];
+    _emit();
+  }
+
+  /// Inject a small set of saved/imported restaurant cards into the chat. These
+  /// are backed by ExperienceCard ids because My Places currently stores
+  /// imported restaurant cards in the same Firestore collection.
+  void showRestaurantCards(List<String> experienceIds) {
+    _local = [
+      ChatMessage(
+        senderId: 'ai_agent',
+        messageText: '',
+        type: ChatMessageType.restaurantCards,
+        timestamp: Timestamp.fromDate(
+          DateTime.now().add(const Duration(seconds: 2)),
+        ),
+        recommendedSpotIds: List.unmodifiable(experienceIds),
       ),
       ..._local,
     ];

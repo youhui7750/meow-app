@@ -8,6 +8,7 @@ import 'package:meow_food_butler/services/navigation.dart'; // Import your navig
 import 'package:meow_food_butler/services/shared_url_notifier.dart';
 import 'package:meow_food_butler/theme/theme.dart';
 import 'package:meow_food_butler/utils/theme_util.dart';
+import 'package:meow_food_butler/view_models/app_settings_view_model.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
 import 'package:provider/provider.dart';
 
@@ -88,6 +89,7 @@ class _FoodButlerAppState extends State<FoodButlerApp> {
 
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AppSettingsViewModel()),
         ChangeNotifierProvider(create: (_) => SavedViewModel()),
         ChangeNotifierProvider<SharedUrlNotifier>(create: (_) => _sharedUrlNotifier),
       ],
