@@ -98,7 +98,7 @@ class RestaurantRepository {
 
     for (final candidate in candidates) {
       final id = candidate?.trim();
-      if (id == null || id.isEmpty) continue;
+      if (!_isUsableLookupId(id)) continue;
 
       final directDoc = await _collection.doc(id).get();
       if (directDoc.exists && directDoc.data() != null) {
@@ -176,6 +176,12 @@ class RestaurantRepository {
     }, SetOptions(merge: true));
 
     return docRef.id;
+  }
+
+  bool _isUsableLookupId(String? id) {
+    if (id == null || id.isEmpty) return false;
+    if (id.startsWith('__') && id.endsWith('__')) return false;
+    return true;
   }
 
   Future<void> deleteRestaurant(String id) async {
@@ -270,7 +276,7 @@ class RestaurantRepository {
 
   Future<String?> _findExistingRestaurantId(FoodCard restaurant) async {
     final id = restaurant.id?.trim();
-    if (id != null && id.isNotEmpty) {
+    if (_isUsableLookupId(id)) {
       final doc = await _collection.doc(id).get();
       if (doc.exists) return doc.id;
 

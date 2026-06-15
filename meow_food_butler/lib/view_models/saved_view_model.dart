@@ -13,6 +13,7 @@ class SavedViewModel extends ChangeNotifier {
   StreamSubscription<List<ExperienceCard>>? _subscription;
 
   final List<ExperienceCard> _experiences = [];
+  final Set<String> _foodCardEnsuresInFlight = {};
 
   bool _isSaving = false;
   String? _errorMessage;
@@ -113,9 +114,10 @@ class SavedViewModel extends ChangeNotifier {
     ExperienceCard? saved;
     await _runSaveAction(() async {
       saved = await _repository.addExperience(experience, photos: photos);
+      if (saved != null) {
+        await _ensureFoodCard(saved!);
+      }
     });
-    // Fire-and-forget: ensure a FoodCard exists so Saved tab has Google data
-    if (saved != null) { unawaited(_ensureFoodCard(saved!)); }
   }
 
   /// Checks if a FoodCard already exists for [experience] in Firestore; if not,
@@ -123,8 +125,10 @@ class SavedViewModel extends ChangeNotifier {
   /// experience so future opens skip the API call entirely.
   Future<void> _ensureFoodCard(ExperienceCard experience) async {
     if (experience.foodCardId != null && experience.foodCardId!.isNotEmpty) return;
+    if (!experience.isDone) return;
     final expId = experience.id;
     if (expId == null || expId.isEmpty) return;
+    if (!_foodCardEnsuresInFlight.add(expId)) return;
 
     try {
       final restaurantRepo = RestaurantRepository();
@@ -135,20 +139,30 @@ class SavedViewModel extends ChangeNotifier {
       }
 
       final fetched = await _fetchForExperience(experience);
-      if (fetched == null) return;
+      if (fetched == null) {
+        debugPrint(
+          'SavedViewModel: restaurant lookup returned null for ${experience.placeTitle}',
+        );
+        return;
+      }
 
       final savedId = await restaurantRepo.saveRestaurant(fetched);
       if (savedId.isNotEmpty) {
         await ExperienceRepository().linkFoodCard(expId, savedId);
       }
-    } catch (_) {
+    } catch (error) {
+      debugPrint(
+        'SavedViewModel: ensure FoodCard failed for ${experience.placeTitle}: $error',
+      );
+    } finally {
+      _foodCardEnsuresInFlight.remove(expId);
       // Background — never surface errors to the UI
     }
   }
 
   /// Resolves lookup priority: placeId → googleMapsUrl → name + address query.
   Future<FoodCard?> _fetchForExperience(ExperienceCard experience) async {
-    final placeId = experience.placeId?.trim();
+    final placeId = _usablePlaceId(experience.placeId);
     final mapsUrl = experience.googleMapsUrl?.trim();
 
     final String? effectivePlaceId;
@@ -179,6 +193,13 @@ class SavedViewModel extends ChangeNotifier {
       tags: experience.personalTags,
       visited: experience.isDone,
     );
+  }
+
+  String? _usablePlaceId(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    if (trimmed.startsWith('__') && trimmed.endsWith('__')) return null;
+    return trimmed;
   }
 
   Future<void> updateExperience(

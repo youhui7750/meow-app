@@ -299,7 +299,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
   void initState() {
     super.initState();
     _loadSpotIcons();
-    _moveToCurrentLocation();
+    _moveToCurrentLocation(showErrors: false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final notifier = Provider.of<SharedUrlNotifier>(context, listen: false);
       _sharedUrlNotifier = notifier;
@@ -633,26 +633,56 @@ class _MainMapScreenState extends State<MainMapScreen> {
     return DistanceService.formatMeters(_distanceMetersTo(experience));
   }
 
-  List<ExperienceCard> _sortMyPlaces(List<ExperienceCard> experiences) {
+  List<ExperienceCard> _sortMyPlaces(
+    List<ExperienceCard> experiences,
+    List<FoodCard> restaurants,
+  ) {
     final items = List<ExperienceCard>.from(experiences);
 
-    if (_myPlacesSortMode == MyPlacesSortMode.recent ||
-        _currentLocation == null) {
+    if (_myPlacesSortMode == MyPlacesSortMode.recent) {
+      return items..sort((a, b) => b.createdTime.compareTo(a.createdTime));
+    }
+
+    if (_myPlacesSortMode == MyPlacesSortMode.openNow) {
+      return items
+        ..sort((a, b) {
+          final aRank = _openSortRank(_hoursStatusFor(a, restaurants));
+          final bRank = _openSortRank(_hoursStatusFor(b, restaurants));
+          if (aRank != bRank) return aRank.compareTo(bRank);
+
+          final distanceCompare = _compareDistance(a, b);
+          if (distanceCompare != 0) return distanceCompare;
+          return b.createdTime.compareTo(a.createdTime);
+        });
+    }
+
+    if (_currentLocation == null) {
       return items..sort((a, b) => b.createdTime.compareTo(a.createdTime));
     }
 
     return items
       ..sort((a, b) {
-        final aDistance = _distanceMetersTo(a);
-        final bDistance = _distanceMetersTo(b);
-
-        if (aDistance == null && bDistance == null) {
-          return b.createdTime.compareTo(a.createdTime);
-        }
-        if (aDistance == null) return 1;
-        if (bDistance == null) return -1;
-        return aDistance.compareTo(bDistance);
+        final distanceCompare = _compareDistance(a, b);
+        if (distanceCompare != 0) return distanceCompare;
+        return b.createdTime.compareTo(a.createdTime);
       });
+  }
+
+  int _openSortRank(BusinessHoursStatus? status) {
+    final isOpen = status?.isOpen;
+    if (isOpen == true) return 0;
+    if (isOpen == false) return 1;
+    return 2;
+  }
+
+  int _compareDistance(ExperienceCard a, ExperienceCard b) {
+    final aDistance = _distanceMetersTo(a);
+    final bDistance = _distanceMetersTo(b);
+
+    if (aDistance == null && bDistance == null) return 0;
+    if (aDistance == null) return 1;
+    if (bDistance == null) return -1;
+    return aDistance.compareTo(bDistance);
   }
 
   Set<Marker> _markersFor(List<ExperienceCard> experiences) {
@@ -790,7 +820,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
     }
   }
 
-  Future<void> _moveToCurrentLocation() async {
+  Future<void> _moveToCurrentLocation({bool showErrors = true}) async {
     if (_isLocating) return;
 
     setState(() {
@@ -802,13 +832,11 @@ class _MainMapScreenState extends State<MainMapScreen> {
 
       if (position == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Could not get current location. Check browser location permission for this localhost port.',
-            ),
-          ),
-        );
+        if (showErrors) {
+          _showMapSnackBar(
+            'Could not get current location. Check browser location permission for this localhost port.',
+          );
+        }
         return;
       }
 
@@ -830,9 +858,9 @@ class _MainMapScreenState extends State<MainMapScreen> {
     } catch (error) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not get current location: $error')),
-      );
+      if (showErrors) {
+        _showMapSnackBar('Could not get current location: $error');
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -840,6 +868,15 @@ class _MainMapScreenState extends State<MainMapScreen> {
         });
       }
     }
+  }
+
+  void _showMapSnackBar(String message) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    });
   }
 
   @override
@@ -879,8 +916,8 @@ class _MainMapScreenState extends State<MainMapScreen> {
     final myPlaceExperiences = _sortMyPlaces(
       _mapExperiences([
         ...restaurantExperiences.where((experience) => experience.isDone),
-        ...savedExperiences.where((experience) => !_isImportedExperience(experience)),
       ]),
+      restaurants,
     );
     final mapExperiences = _sheetMode == MapSheetMode.imported
         ? importedExperiences

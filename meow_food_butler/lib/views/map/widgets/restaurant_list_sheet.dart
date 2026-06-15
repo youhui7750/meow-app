@@ -14,7 +14,7 @@ import 'package:meow_food_butler/view_models/saved_view_model.dart';
 
 enum MapSheetMode { imported, myPlaces }
 
-enum MyPlacesSortMode { distance, recent }
+enum MyPlacesSortMode { distance, recent, openNow }
 
 class RestaurantListSheet extends StatefulWidget {
   static const double minSize = 0.07;
@@ -209,7 +209,7 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
     //   1. placeId (exact Google place) → converts to Maps URL on backend
     //   2. googleMapsUrl (user's saved Maps link) → Outscraper resolves exact place
     //   3. text query = "name, address" for more specific fuzzy search
-    final placeId = experience.placeId?.trim();
+    final placeId = _usablePlaceId(experience.placeId);
     final mapsUrl = experience.googleMapsUrl?.trim();
 
     final String? effectivePlaceId;
@@ -243,6 +243,13 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
       tags: experience.personalTags,
       visited: experience.isDone,
     );
+  }
+
+  String? _usablePlaceId(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    if (trimmed.startsWith('__') && trimmed.endsWith('__')) return null;
+    return trimmed;
   }
 
   FoodCard _foodCardFromExperience(ExperienceCard experience) {
@@ -382,6 +389,7 @@ class _RestaurantListSheetState extends State<RestaurantListSheet> {
                                 widget.selectedExperienceId;
 
                             return _MapRestaurantCard(
+                              key: ValueKey(widget.markerIdFor(experience)),
                               experience: experience,
                               selected: selected,
                               mode: widget.mode,
@@ -706,6 +714,13 @@ class _MyPlacesSortControl extends StatelessWidget {
             selected: mode == MyPlacesSortMode.recent,
             onTap: () => onChanged(MyPlacesSortMode.recent),
           ),
+          const SizedBox(width: 8),
+          _SortButton(
+            icon: Icons.storefront,
+            label: 'Open',
+            selected: mode == MyPlacesSortMode.openNow,
+            onTap: () => onChanged(MyPlacesSortMode.openNow),
+          ),
           const Spacer(),
           Text(
             'Sort',
@@ -841,6 +856,7 @@ class _MapRestaurantCard extends StatelessWidget {
   final VoidCallback onDeleteImported;
 
   const _MapRestaurantCard({
+    super.key,
     required this.experience,
     required this.selected,
     required this.mode,
@@ -927,6 +943,7 @@ class _MapRestaurantCard extends StatelessWidget {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: _MapCardThumbnail(
+                            key: ValueKey(_thumbnailKeyFor(experience, imageUrl)),
                             experience: experience,
                             mode: mode,
                             imageUrl: imageUrl,
@@ -1098,60 +1115,70 @@ class _MapRestaurantCard extends StatelessWidget {
                     ),
                   ),
 
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      IconButton(
-                        onPressed: onLocate,
-                        icon: Icon(
-                          Icons.near_me,
-                          color: selected
-                              ? colorScheme.primary
-                              : colorScheme.onSurfaceVariant,
-                        ),
-                        tooltip: 'Show on map',
-                      ),
-                      if (mode == MapSheetMode.imported) ...[
-                        const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
                         IconButton(
-                          onPressed: onDeleteImported,
+                          onPressed: onLocate,
                           icon: Icon(
-                            Icons.remove_circle_outline,
-                            color: colorScheme.error,
+                            Icons.near_me,
+                            color: selected
+                                ? colorScheme.primary
+                                : colorScheme.onSurfaceVariant,
                           ),
-                          tooltip: 'Remove imported place',
+                          tooltip: 'Show on map',
                         ),
-                      ],
-                      if (visitCount > 0) ...[
-                        const SizedBox(height: 4),
-                        InkWell(
-                          onTap: onVisitsTapped,
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: colorScheme.secondaryContainer,
-                              borderRadius: BorderRadius.circular(8),
+                        if (mode == MapSheetMode.imported) ...[
+                          const SizedBox(height: 4),
+                          IconButton(
+                            onPressed: onDeleteImported,
+                            icon: Icon(
+                              Icons.remove_circle_outline,
+                              color: colorScheme.error,
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.history, size: 12, color: colorScheme.onSecondaryContainer),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '$visitCount',
-                                  style: theme.textTheme.labelSmall?.copyWith(
+                            tooltip: 'Remove imported place',
+                          ),
+                        ],
+                        if (visitCount > 0) ...[
+                          const SizedBox(height: 4),
+                          InkWell(
+                            onTap: onVisitsTapped,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.secondaryContainer,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.history,
+                                    size: 12,
                                     color: colorScheme.onSecondaryContainer,
-                                    fontWeight: FontWeight.w900,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '$visitCount',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: colorScheme.onSecondaryContainer,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -1161,6 +1188,14 @@ class _MapRestaurantCard extends StatelessWidget {
       ),
     );
   }
+
+  String _thumbnailKeyFor(ExperienceCard experience, String? imageUrl) {
+    final photoKey = imageUrl ??
+        (experience.photoPaths.isEmpty
+            ? 'no-photo'
+            : experience.photoPaths.first);
+    return '${experience.id}-${experience.foodCardId}-$photoKey';
+  }
 }
 
 class _MapCardThumbnail extends StatelessWidget {
@@ -1169,6 +1204,7 @@ class _MapCardThumbnail extends StatelessWidget {
   final String? imageUrl;
 
   const _MapCardThumbnail({
+    super.key,
     required this.experience,
     required this.mode,
     required this.imageUrl,
@@ -1190,25 +1226,29 @@ class _MapCardThumbnail extends StatelessWidget {
       );
     }
 
+    if (imageUrl != null) {
+      return Image.network(
+        key: ValueKey(imageUrl),
+        imageUrl!,
+        width: 58,
+        height: 58,
+        fit: BoxFit.cover,
+        webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+        errorBuilder: (context, error, stackTrace) => fallback(),
+      );
+    }
+
     if (mode == MapSheetMode.myPlaces && experience.photoPaths.isNotEmpty) {
       return ExperiencePhoto(
         experience: experience,
+        photoPath: experience.photoPaths.first,
         width: 58,
         height: 58,
         borderRadius: 12,
       );
     }
 
-    if (imageUrl == null) return fallback();
-
-    return Image.network(
-      imageUrl!,
-      width: 58,
-      height: 58,
-      fit: BoxFit.cover,
-      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-      errorBuilder: (context, error, stackTrace) => fallback(),
-    );
+    return fallback();
   }
 }
 

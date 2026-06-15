@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:meow_food_butler/models/food_card.dart';
 import 'package:meow_food_butler/services/callable_json.dart';
 
@@ -36,9 +37,15 @@ class RestaurantLookupService {
           .httpsCallable('fetchRestaurant')
           .call<Map<String, dynamic>>(payload);
       final data = result.data;
-      if (data['ok'] != true) return null;
+      if (data['ok'] != true) {
+        debugPrint(
+          'RestaurantLookupService: fetchRestaurant returned ${data['code']}',
+        );
+        return null;
+      }
       return FoodCard.fromMap(normalizeCallableMap(data['restaurant']));
-    } catch (_) {
+    } catch (error) {
+      debugPrint('RestaurantLookupService: fetch failed: $error');
       return null;
     }
   }

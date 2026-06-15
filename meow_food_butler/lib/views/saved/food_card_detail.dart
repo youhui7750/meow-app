@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -254,7 +256,8 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
 
     Navigator.of(context).push(
       PageRouteBuilder<void>(
-        opaque: true,
+        opaque: false,
+        barrierColor: Colors.black.withOpacity(0.20),
         pageBuilder: (context, animation, secondaryAnimation) {
           return _FoodPhotoPreviewScreen(
             photoUrls: photoUrls,
@@ -891,13 +894,14 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
     final rating = (review['rating'] as num?)?.toDouble();
     final text = (review['text'] as String?)?.trim();
     final author = (review['author'] as String?)?.trim();
+    final reviewTime = _reviewTimeLabel(review);
 
     if (text == null || text.isEmpty) return const SizedBox.shrink();
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(14),
@@ -906,42 +910,85 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              if (rating != null) ...[
-                ...List.generate(
-                  5,
-                  (index) => Icon(
-                    Icons.star,
-                    size: 14,
-                    color: index < rating.round()
-                        ? Colors.amber.shade700
-                        : colorScheme.outlineVariant,
-                  ),
-                ),
-              ],
-              const Spacer(),
-              Text(
-                author == null || author.isEmpty ? 'Google Maps' : author,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
+          if (rating != null)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(
+                5,
+                (index) => Icon(
+                  Icons.star,
+                  size: 14,
+                  color: index < rating.round()
+                      ? Colors.amber.shade700
+                      : colorScheme.outlineVariant,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
+            ),
+          if (rating != null) const SizedBox(height: 6),
           Text(
             text,
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
-            style: textTheme.bodyMedium?.copyWith(height: 1.4),
+            style: textTheme.bodyMedium?.copyWith(height: 1.32),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              [
+                author == null || author.isEmpty ? 'Google Maps' : author,
+                if (reviewTime != null) reviewTime,
+              ].join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
     );
+  }
+
+  String? _reviewTimeLabel(Map<String, dynamic> review) {
+    final relative = _readReviewText(review['relative_time']);
+    if (relative != null) {
+      final timestamp = num.tryParse(relative);
+      if (timestamp == null) return relative;
+
+      final date = _dateFromEpoch(timestamp);
+      if (date != null) return _formatReviewDate(date);
+    }
+
+    final datetime = _readReviewText(review['datetime']);
+    if (datetime == null) return null;
+    final timestamp = num.tryParse(datetime);
+    final parsed =
+        timestamp == null ? DateTime.tryParse(datetime) : _dateFromEpoch(timestamp);
+    if (parsed == null) return datetime;
+
+    return _formatReviewDate(parsed);
+  }
+
+  String? _readReviewText(Object? value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  DateTime? _dateFromEpoch(num value) {
+    final epoch = value.toInt();
+    if (epoch <= 0) return null;
+    final millis = epoch > 100000000000 ? epoch : epoch * 1000;
+    return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true).toLocal();
+  }
+
+  String _formatReviewDate(DateTime date) {
+    final local = date.toLocal();
+    return '${local.year}/${local.month.toString().padLeft(2, '0')}/${local.day.toString().padLeft(2, '0')}';
   }
 
   String? _todayHoursLabel() {
@@ -1059,6 +1106,7 @@ class _FoodPhotoPreviewScreen extends StatefulWidget {
 class _FoodPhotoPreviewScreenState extends State<_FoodPhotoPreviewScreen> {
   late final PageController _pageController;
   late int _currentIndex;
+  double _dragOffset = 0;
 
   @override
   void initState() {
@@ -1090,41 +1138,97 @@ class _FoodPhotoPreviewScreenState extends State<_FoodPhotoPreviewScreen> {
     );
   }
 
+  void _handleDragUpdate(DragUpdateDetails details) {
+    final delta = details.primaryDelta ?? 0;
+    if (delta <= 0 && _dragOffset <= 0) return;
+    setState(() {
+      _dragOffset = (_dragOffset + delta).clamp(0.0, 240.0);
+    });
+  }
+
+  void _handleDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (_dragOffset > 90 || velocity > 700) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _dragOffset = 0;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final canGoBack = _currentIndex > 0;
     final canGoForward = _currentIndex < widget.photoUrls.length - 1;
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
+      backgroundColor: Colors.transparent,
+      body: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: ColoredBox(
+          color: Colors.black.withOpacity(0.36),
+          child: SafeArea(
+            child: Stack(
           children: [
-            PageView.builder(
-              controller: _pageController,
-              itemCount: widget.photoUrls.length,
-              onPageChanged: (index) => setState(() => _currentIndex = index),
-              itemBuilder: (context, index) {
-                final url = widget.photoUrls[index];
-                return Center(
-                  child: InteractiveViewer(
-                    minScale: 1,
-                    maxScale: 4,
-                    child: Image.network(
-                      url,
-                      fit: BoxFit.contain,
-                      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.white70,
-                          size: 48,
-                        );
-                      },
-                    ),
-                  ),
-                );
-              },
+            GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onVerticalDragUpdate: _handleDragUpdate,
+              onVerticalDragEnd: _handleDragEnd,
+              child: AnimatedSlide(
+                offset: Offset(0, _dragOffset / 520),
+                duration: _dragOffset == 0
+                    ? const Duration(milliseconds: 180)
+                    : Duration.zero,
+                curve: Curves.easeOutCubic,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: SizedBox(
+                          width: constraints.maxWidth * 0.88,
+                          height: constraints.maxHeight * 0.78,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.28),
+                            ),
+                            child: PageView.builder(
+                              controller: _pageController,
+                              itemCount: widget.photoUrls.length,
+                              onPageChanged: (index) =>
+                                  setState(() => _currentIndex = index),
+                              itemBuilder: (context, index) {
+                                final url = widget.photoUrls[index];
+                                return Center(
+                                  child: InteractiveViewer(
+                                    minScale: 1,
+                                    maxScale: 4,
+                                    child: Image.network(
+                                      url,
+                                      fit: BoxFit.contain,
+                                      webHtmlElementStrategy:
+                                          WebHtmlElementStrategy.prefer,
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
+                                        return const Icon(
+                                          Icons.broken_image_outlined,
+                                          color: Colors.white70,
+                                          size: 48,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
             Positioned(
               top: 12,
@@ -1204,6 +1308,8 @@ class _FoodPhotoPreviewScreenState extends State<_FoodPhotoPreviewScreen> {
               ),
             ],
           ],
+            ),
+          ),
         ),
       ),
     );
