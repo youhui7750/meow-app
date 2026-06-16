@@ -172,35 +172,56 @@ class SavedViewModel extends ChangeNotifier {
     }
   }
 
-  /// Imports a restaurant from an Instagram / Google Maps URL without blocking
-  /// the UI. Progress is surfaced via [importEvents]; the result is also applied
-  /// to [recentlyImportedIds] so the card gets a highlight border.
-  Future<void> importFromUrl(String url) async {
+  /// Imports a restaurant from an Instagram / Google Maps URL.
+  ///
+  /// URL imports create restaurant cards only. They intentionally do not create
+  /// Experience records, because Experiences are user-authored meal logs.
+  Future<bool> importFromUrl(String url) async {
     final trimmed = url.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty) return false;
 
     _importEvents.add(RestaurantImportEvent.started('貼文餐廳'));
     try {
       final result = await InstagramImportService().import(trimmed);
       final restaurantRepo = RestaurantRepository();
       final savedId = await restaurantRepo.saveRestaurant(result.restaurant);
-      if (savedId.isEmpty) return;
+      if (savedId.isEmpty) return false;
 
-      final expWithCard = result.experience.copyWith(foodCardId: savedId);
+      final savedRestaurants = await restaurantRepo.restaurantsByIds([savedId]);
+      final restaurant =
+          savedRestaurants.isEmpty ? result.restaurant : savedRestaurants.first;
+      final transientCard = result.experience.copyWith(
+        id: 'restaurant-$savedId',
+        foodCardId: savedId,
+        placeId: savedId,
+        placeTitle: restaurant.primaryTitle,
+        placeAddress: restaurant.formattedAddress,
+        latitude: restaurant.location?.latitude,
+        longitude: restaurant.location?.longitude,
+        originalURL: trimmed,
+        googleMapsUrl: restaurant.googleMapsUrl,
+        photoPaths: restaurant.photoPaths,
+        photoUrls: restaurant.photoUrls,
+        personalTags: restaurant.tags,
+        personalRating: restaurant.rating ?? result.experience.personalRating,
+        personalNote: restaurant.description,
+        isDone: false,
+      );
       // Skip reviewCreated — `completed` below covers the user notification.
-      await addExperience(expWithCard, emitReviewCreated: false);
 
       _latestImportedId = savedId;
       _importEvents.add(
         RestaurantImportEvent.completed(
-          result.restaurant.primaryTitle,
+          restaurant.primaryTitle,
           savedId,
-          linkedExperience: expWithCard,
+          linkedExperience: transientCard,
         ),
       );
       notifyListeners();
+      return true;
     } catch (error) {
       debugPrint('SavedViewModel.importFromUrl failed: $error');
+      return false;
     }
   }
 
