@@ -1,14 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
+import 'package:provider/provider.dart';
 
 /// Dialog for pasting an Instagram / Google Maps URL to import a restaurant.
-///
-/// The import itself runs in the background via [SavedViewModel.importFromUrl]
-/// and is non-blocking: the dialog closes immediately once the user confirms,
-/// and progress + completion are surfaced via bottom SnackBar notifications.
 class ImportInstagramDialog extends StatefulWidget {
   final String? initialUrl;
 
@@ -24,9 +20,9 @@ class _ImportInstagramDialogState extends State<ImportInstagramDialog> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialUrl != null && widget.initialUrl!.trim().isNotEmpty) {
-      _controller.text = widget.initialUrl!.trim();
-      // Auto-start import for shared URLs — close dialog instantly.
+    final initialUrl = widget.initialUrl?.trim();
+    if (initialUrl != null && initialUrl.isNotEmpty) {
+      _controller.text = initialUrl;
       WidgetsBinding.instance.addPostFrameCallback((_) => _startImport());
     }
   }
@@ -37,10 +33,10 @@ class _ImportInstagramDialogState extends State<ImportInstagramDialog> {
     super.dispose();
   }
 
-  void _startImport() {
+  Future<void> _startImport() async {
     final url = _controller.text.trim();
     if (url.isEmpty) return;
-    // Fire-and-forget: import runs in background, progress via SnackBar stream.
+
     unawaited(context.read<SavedViewModel>().importFromUrl(url));
     Navigator.of(context).pop();
   }
@@ -48,12 +44,12 @@ class _ImportInstagramDialogState extends State<ImportInstagramDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('💡 智慧貼文匯入餐廳'),
+      title: const Text('匯入餐廳連結'),
       content: TextField(
         controller: _controller,
         autofocus: true,
         decoration: const InputDecoration(
-          hintText: '請貼上 IG Reels / Post 或 Google Maps 連結',
+          hintText: '貼上 Instagram Reels / Post 或 Google Maps 連結',
           border: OutlineInputBorder(),
         ),
         onSubmitted: (_) => _startImport(),
@@ -65,7 +61,7 @@ class _ImportInstagramDialogState extends State<ImportInstagramDialog> {
         ),
         ElevatedButton(
           onPressed: _startImport,
-          child: const Text('開始分析'),
+          child: const Text('匯入'),
         ),
       ],
     );

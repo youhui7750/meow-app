@@ -917,7 +917,6 @@ class _MainMapScreenState extends State<MainMapScreen> {
       [
         ..._importedCandidates,
         ...restaurantExperiences.where((experience) => !experience.isDone),
-        ...savedExperiences.where(_isImportedExperience),
       ],
     );
     final myPlaceExperiences = _sortMyPlaces(

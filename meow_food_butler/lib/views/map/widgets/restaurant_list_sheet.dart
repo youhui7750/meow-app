@@ -17,7 +17,7 @@ enum MapSheetMode { imported, myPlaces }
 enum MyPlacesSortMode { distance, recent, openNow }
 
 class RestaurantListSheet extends StatefulWidget {
-  static const double minSize = 0.07;
+  static const double minSize = 0.11;
   static const double middleSize = 0.36;
   static const double initialSize = minSize;
   static const double maxSize = 0.92;
@@ -1233,19 +1233,8 @@ class _MapCardThumbnail extends StatelessWidget {
       );
     }
 
-    if (imageUrl != null) {
-      return Image.network(
-        key: ValueKey(imageUrl),
-        imageUrl!,
-        width: 58,
-        height: 58,
-        fit: BoxFit.cover,
-        webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-        errorBuilder: (context, error, stackTrace) => fallback(),
-      );
-    }
-
-    if (mode == MapSheetMode.myPlaces && experience.photoPaths.isNotEmpty) {
+    Widget storagePhoto() {
+      if (experience.photoPaths.isEmpty) return fallback();
       return ExperiencePhoto(
         experience: experience,
         photoPath: experience.photoPaths.first,
@@ -1255,7 +1244,19 @@ class _MapCardThumbnail extends StatelessWidget {
       );
     }
 
-    return fallback();
+    if (imageUrl != null) {
+      return Image.network(
+        key: ValueKey(imageUrl),
+        imageUrl!,
+        width: 58,
+        height: 58,
+        fit: BoxFit.cover,
+        webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+        errorBuilder: (context, error, stackTrace) => storagePhoto(),
+      );
+    }
+
+    return storagePhoto();
   }
 }
 
