@@ -15,15 +15,6 @@ const { extractRestaurantName } = require("./extract");
 
 const FALLBACK_TAGS = ["IG匯入", "待吃清單"];
 
-/** Use the IG check-in tag as the query when it's meaningful; else null. */
-function queryFromLocationTag(locationTag) {
-  const q = (locationTag || "").trim();
-  if (!q) return null;
-  const lower = q.toLowerCase();
-  if (["null", "unknown", "instagram", "none"].includes(lower)) return null;
-  return q;
-}
-
 /** Pull ASCII hashtags from the caption (mirrors the Dart `#(\w+)` regex). */
 function extractHashtags(text) {
   return [...String(text || "").matchAll(/#(\w+)/g)].map((m) => m[1]);
@@ -114,10 +105,10 @@ async function importInstagram(igUrl) {
   if (!ig || !ig.caption) {
     return { ok: false, code: "ig-unreadable", reply: "😿 I couldn't read that post — is the link public?" };
   }
-  const { caption, location: locationTag } = ig;
+  const { caption } = ig;
 
-  // 2. Query: prefer the IG location tag; else ask the model.
-  const query = queryFromLocationTag(locationTag) || (await extractRestaurantName(caption, locationTag));
+  // 2. Query: extract restaurant name from caption only (location tag ignored).
+  const query = await extractRestaurantName(caption);
   if (!query) {
     return { ok: false, code: "no-restaurant", reply: "😿 I couldn't spot a clear restaurant name in that post." };
   }
