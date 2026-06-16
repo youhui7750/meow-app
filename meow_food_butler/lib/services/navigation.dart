@@ -126,7 +126,7 @@ class ScaffoldWithNestedNavigation extends StatelessWidget {
             NavigationDestination(
               icon: Icon(Icons.map_outlined),
               selectedIcon: Icon(Icons.map),
-              label: 'Map',
+              label: 'Restaurants',
             ),
             NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline),
@@ -136,7 +136,7 @@ class ScaffoldWithNestedNavigation extends StatelessWidget {
             NavigationDestination(
               icon: Icon(Icons.bookmark_border),
               selectedIcon: Icon(Icons.bookmark),
-              label: 'Saved',
+              label: 'Experiences',
             ),
           ],
           onDestinationSelected: _onTap,
