@@ -376,9 +376,18 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
     final textTheme = Theme.of(context).textTheme;
     final rating = widget.foodCard.rating;
 
-    final visitCount = currentExperiences.length;
-    final avgRating = visitCount > 0 
-        ? currentExperiences.fold(0.0, (sum, exp) => sum + exp.personalRating) / visitCount 
+    // Exclude synthetic restaurant cards (id prefixed 'restaurant-') and
+    // unrated experiences; only real user-logged visits with personalRating > 0
+    // should count toward My Avg.
+    final ratedExps = currentExperiences
+        .where((e) =>
+            e.personalRating > 0 &&
+            !(e.id?.startsWith('restaurant-') == true))
+        .toList();
+    final visitCount = ratedExps.length;
+    final avgRating = visitCount > 0
+        ? ratedExps.fold(0.0, (sum, exp) => sum + exp.personalRating) /
+            visitCount
         : 0.0;
 
     return Container(

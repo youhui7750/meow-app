@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,7 +7,46 @@ import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/models/food_card.dart';
 import 'package:meow_food_butler/repositories/experience_repository.dart';
 import 'package:meow_food_butler/repositories/restaurant_repository.dart';
+import 'package:meow_food_butler/services/instagram_import_service.dart';
 import 'package:meow_food_butler/services/restaurant_lookup_service.dart';
+
+// ---------------------------------------------------------------------------
+// Import-status events emitted on [SavedViewModel.importEvents]
+// ---------------------------------------------------------------------------
+
+enum _ImportEventType { started, completed, reviewCreated }
+
+class RestaurantImportEvent {
+  final _ImportEventType _type;
+  final String restaurantName;
+  final String? foodCardId;
+
+  /// The experience card returned by URL import; null for Outscraper-based imports.
+  final ExperienceCard? linkedExperience;
+
+  bool get isStarted => _type == _ImportEventType.started;
+  bool get isCompleted => _type == _ImportEventType.completed;
+  bool get isReviewCreated => _type == _ImportEventType.reviewCreated;
+
+  RestaurantImportEvent.started(this.restaurantName)
+      : _type = _ImportEventType.started,
+        foodCardId = null,
+        linkedExperience = null;
+
+  RestaurantImportEvent.completed(
+    this.restaurantName,
+    String id, {
+    this.linkedExperience,
+  })  : _type = _ImportEventType.completed,
+        foodCardId = id;
+
+  RestaurantImportEvent.reviewCreated(this.restaurantName)
+      : _type = _ImportEventType.reviewCreated,
+        foodCardId = null,
+        linkedExperience = null;
+}
+
+// ---------------------------------------------------------------------------
 
 class SavedViewModel extends ChangeNotifier {
   final ExperienceRepository _repository;
@@ -14,6 +54,12 @@ class SavedViewModel extends ChangeNotifier {
 
   final List<ExperienceCard> _experiences = [];
   final Set<String> _foodCardEnsuresInFlight = {};
+
+  // Only the single most-recently imported ID is kept so the highlight moves
+  // to the new card each time an import completes (Bug 2).
+  String? _latestImportedId;
+  final StreamController<RestaurantImportEvent> _importEvents =
+      StreamController<RestaurantImportEvent>.broadcast();
 
   bool _isSaving = false;
   String? _errorMessage;
@@ -24,6 +70,15 @@ class SavedViewModel extends ChangeNotifier {
   }
 
   List<ExperienceCard> get experiences => List.unmodifiable(_experiences);
+
+  /// A set containing only the single most-recently imported FoodCard ID, or
+  /// empty if no import has happened yet this session. Cards whose id is in
+  /// this set render with the "new import" highlight border.
+  Set<String> get recentlyImportedIds =>
+      _latestImportedId != null ? {_latestImportedId!} : const {};
+
+  /// Stream of import lifecycle events.
+  Stream<RestaurantImportEvent> get importEvents => _importEvents.stream;
 
   List<List<ExperienceCard>> get groupedExperiences {
     final map = <String, List<ExperienceCard>>{};
@@ -48,7 +103,7 @@ class SavedViewModel extends ChangeNotifier {
     groupedList.sort((a, b) {
       final aLatest = a.first.createdTime;
       final bLatest = b.first.createdTime;
-      
+
       if (aLatest == null && bLatest == null) return 0;
       if (aLatest == null) return 1;
       if (bLatest == null) return -1;
@@ -68,14 +123,6 @@ class SavedViewModel extends ChangeNotifier {
     return null;
   }
 
-  /// The most recently logged experience, optionally filtered to those matching
-  /// [query] (case-insensitive) by place name, tags, or note. Returns null when
-  /// nothing matches.
-  ///
-  /// Backs the chat assistant's dining-log cards: no [query] answers "show my
-  /// last meal", and a [query] like "ramen" answers "find the last time I ate
-  /// ramen". Kept here (not in the view) so the matching rules live with the
-  /// experience data.
   ExperienceCard? latestExperience({String? query}) {
     final needle = query?.trim().toLowerCase();
     ExperienceCard? latest;
@@ -92,8 +139,6 @@ class SavedViewModel extends ChangeNotifier {
     return latest;
   }
 
-  /// Whether [exp] matches an already-lowercased [needle] on its place name,
-  /// any tag, or its note.
   bool _matchesQuery(ExperienceCard exp, String needle) {
     if ((exp.placeTitle ?? '').toLowerCase().contains(needle)) return true;
     if ((exp.personalNote ?? '').toLowerCase().contains(needle)) return true;
@@ -106,6 +151,7 @@ class SavedViewModel extends ChangeNotifier {
   Future<void> addExperience(
     ExperienceCard experience, {
     List<XFile> photos = const [],
+    bool emitReviewCreated = true,
   }) async {
     if (!_experiences.any((e) => e.id == experience.id)) {
       _experiences.insert(0, experience);
@@ -115,16 +161,51 @@ class SavedViewModel extends ChangeNotifier {
     await _runSaveAction(() async {
       saved = await _repository.addExperience(experience, photos: photos);
     });
-    // Fire Outscraper in the background after the save completes so the sheet
-    // can close immediately — the 30-second API call must not block the UI.
     if (saved != null) {
+      if (emitReviewCreated) {
+        _importEvents.add(
+          RestaurantImportEvent.reviewCreated(saved!.placeTitle ?? '餐廳'),
+        );
+      }
+      // Fire Outscraper in the background — must not block the UI.
       unawaited(_ensureFoodCard(saved!));
     }
   }
 
-  /// Checks if a FoodCard already exists for [experience] in Firestore; if not,
-  /// fetches one from Outscraper and saves it, then links it back to the
-  /// experience so future opens skip the API call entirely.
+  /// Imports a restaurant from an Instagram / Google Maps URL without blocking
+  /// the UI. Progress is surfaced via [importEvents]; the result is also applied
+  /// to [recentlyImportedIds] so the card gets a highlight border.
+  Future<void> importFromUrl(String url) async {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return;
+
+    _importEvents.add(RestaurantImportEvent.started('貼文餐廳'));
+    try {
+      final result = await InstagramImportService().import(trimmed);
+      final restaurantRepo = RestaurantRepository();
+      final savedId = await restaurantRepo.saveRestaurant(result.restaurant);
+      if (savedId.isEmpty) return;
+
+      final expWithCard = result.experience.copyWith(foodCardId: savedId);
+      // Skip reviewCreated — `completed` below covers the user notification.
+      await addExperience(expWithCard, emitReviewCreated: false);
+
+      _latestImportedId = savedId;
+      _importEvents.add(
+        RestaurantImportEvent.completed(
+          result.restaurant.primaryTitle,
+          savedId,
+          linkedExperience: expWithCard,
+        ),
+      );
+      notifyListeners();
+    } catch (error) {
+      debugPrint('SavedViewModel.importFromUrl failed: $error');
+    }
+  }
+
+  /// Checks if a FoodCard already exists for [experience]; if not, fetches one
+  /// from Outscraper and saves it, then links it back to the experience.
   Future<void> _ensureFoodCard(ExperienceCard experience) async {
     if (experience.foodCardId != null && experience.foodCardId!.isNotEmpty) return;
     if (!experience.isDone) return;
@@ -136,9 +217,17 @@ class SavedViewModel extends ChangeNotifier {
       final restaurantRepo = RestaurantRepository();
       final existing = await restaurantRepo.findForExperience(experience);
       if (existing != null) {
-        await ExperienceRepository().linkFoodCard(expId, existing.id ?? '');
+        final existingId = existing.id ?? '';
+        if (existingId.isNotEmpty) {
+          await ExperienceRepository().linkFoodCard(expId, existingId);
+          // Bug 2: bump updatedTime so this restaurant sorts to "recent" top.
+          unawaited(restaurantRepo.touchRestaurant(existingId));
+        }
         return;
       }
+
+      final restaurantName = experience.placeTitle ?? 'Unknown Restaurant';
+      _importEvents.add(RestaurantImportEvent.started(restaurantName));
 
       final fetched = await _fetchForExperience(experience);
       if (fetched == null) {
@@ -151,6 +240,12 @@ class SavedViewModel extends ChangeNotifier {
       final savedId = await restaurantRepo.saveRestaurant(fetched);
       if (savedId.isNotEmpty) {
         await ExperienceRepository().linkFoodCard(expId, savedId);
+        // Replace old highlight with this new import (Bug 2: only one at a time).
+        _latestImportedId = savedId;
+        _importEvents.add(
+          RestaurantImportEvent.completed(fetched.primaryTitle, savedId),
+        );
+        notifyListeners();
       }
     } catch (error) {
       debugPrint(
@@ -158,13 +253,11 @@ class SavedViewModel extends ChangeNotifier {
       );
     } finally {
       _foodCardEnsuresInFlight.remove(expId);
-      // Background — never surface errors to the UI
     }
   }
 
   /// Resolves lookup priority: placeId → googleMapsUrl → skip.
-  /// Text-only queries (name + address) are intentionally excluded: they are
-  /// unreliable and can match unrelated restaurants when tags are sent as context.
+  /// Text-only queries are excluded to prevent unrelated restaurant matches.
   Future<FoodCard?> _fetchForExperience(ExperienceCard experience) async {
     final placeId = _usablePlaceId(experience.placeId);
     final mapsUrl = experience.googleMapsUrl?.trim();
@@ -290,6 +383,7 @@ class SavedViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    _importEvents.close();
     super.dispose();
   }
 }
