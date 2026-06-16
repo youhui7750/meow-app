@@ -6,6 +6,7 @@ import 'package:meow_food_butler/view_models/saved_view_model.dart';
 import 'package:meow_food_butler/views/saved/share_card_page.dart';
 import 'package:meow_food_butler/views/saved/experience_entry_sheet.dart';
 import 'package:meow_food_butler/views/saved/widgets/experience_photo.dart';
+import 'package:meow_food_butler/views/saved/widgets/photo_preview_screen.dart';
 import 'package:provider/provider.dart';
 
 class ExperienceDetailScreen extends StatelessWidget {
@@ -167,21 +168,30 @@ class ExperienceDetailScreen extends StatelessWidget {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: photoSources.length,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(width: 12),
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
                     itemBuilder: (context, index) {
                       final source = photoSources[index];
+                      final previewSources = photoSources
+                          .map((s) => PhotoSource(url: s.photoUrl, path: s.photoPath))
+                          .toList();
 
-                      return ExperiencePhoto(
-                        key: ValueKey(
-                          '${experience.id}-$index-${source.photoPath ?? source.photoUrl ?? 'empty'}',
+                      return GestureDetector(
+                        onTap: () => PhotoPreviewScreen.show(
+                          context,
+                          sources: previewSources,
+                          initialIndex: index,
                         ),
-                        experience: experience,
-                        photoUrl: source.photoUrl,
-                        photoPath: source.photoPath,
-                        width: 180,
-                        height: 180,
-                        borderRadius: 18,
+                        child: ExperiencePhoto(
+                          key: ValueKey(
+                            '${experience.id}-$index-${source.photoPath ?? source.photoUrl ?? 'empty'}',
+                          ),
+                          experience: experience,
+                          photoUrl: source.photoUrl,
+                          photoPath: source.photoPath,
+                          width: 180,
+                          height: 180,
+                          borderRadius: 18,
+                        ),
                       );
                     },
                   ),
