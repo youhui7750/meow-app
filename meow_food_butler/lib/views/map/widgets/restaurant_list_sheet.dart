@@ -876,12 +876,15 @@ class _MapRestaurantCard extends StatelessWidget {
             ? Colors.green.withOpacity(0.15)
             : Colors.red.withOpacity(0.15));
 
-    final allExperiences = context.watch<SavedViewModel>().experiences;
+    final savedVM = context.watch<SavedViewModel>();
+    final allExperiences = savedVM.experiences;
     final targetKey =
         experience.foodCardId ?? experience.placeId ?? experience.placeTitle;
     final visitCount = allExperiences
         .where((e) => (e.foodCardId ?? e.placeId ?? e.placeTitle) == targetKey)
         .length;
+    final isNewlyImported = experience.foodCardId != null &&
+        savedVM.recentlyImportedIds.contains(experience.foodCardId);
 
     return AnimatedScale(
       scale: selected ? 1.006 : 1.0,
@@ -907,8 +910,14 @@ class _MapRestaurantCard extends StatelessWidget {
                 border: Border.all(
                   color: selected
                       ? colorScheme.primary
-                      : colorScheme.outlineVariant,
-                  width: selected ? 2 : 1,
+                      : isNewlyImported
+                          ? const Color(0xFFCC8844)
+                          : colorScheme.outlineVariant,
+                  width: selected
+                      ? 2
+                      : isNewlyImported
+                          ? 2.5
+                          : 1,
                 ),
                 boxShadow: selected
                     ? [
@@ -918,7 +927,16 @@ class _MapRestaurantCard extends StatelessWidget {
                           offset: const Offset(0, 6),
                         ),
                       ]
-                    : [],
+                    : isNewlyImported
+                        ? [
+                            BoxShadow(
+                              color: const Color(0x44CC8844),
+                              blurRadius: 14,
+                              spreadRadius: 1,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : [],
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,

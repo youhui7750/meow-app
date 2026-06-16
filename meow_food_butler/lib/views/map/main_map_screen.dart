@@ -11,7 +11,8 @@ import 'package:meow_food_butler/services/business_hours_service.dart';
 import 'package:meow_food_butler/services/current_map_position.dart';
 import 'package:meow_food_butler/services/distance_service.dart';
 import 'package:meow_food_butler/services/shared_url_notifier.dart';
-import 'package:meow_food_butler/view_models/instagram_import_vm.dart';
+import 'dart:async';
+
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
 import 'package:meow_food_butler/views/map/widgets/import_dialog.dart';
 import 'package:meow_food_butler/views/map/widgets/restaurant_list_sheet.dart';
@@ -294,6 +295,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
   bool _canUseLocation = false;
   bool _isLocating = false;
   SharedUrlNotifier? _sharedUrlNotifier;
+  StreamSubscription<RestaurantImportEvent>? _importEventSub;
 
   @override
   void initState() {
@@ -308,12 +310,38 @@ class _MainMapScreenState extends State<MainMapScreen> {
     });
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Subscribe to import events so URL-imported restaurants land in the sheet.
+    _importEventSub?.cancel();
+    _importEventSub = context
+        .read<SavedViewModel>()
+        .importEvents
+        .listen(_onImportEvent);
+  }
+
+  void _onImportEvent(RestaurantImportEvent event) {
+    if (!mounted || !event.isCompleted) return;
+    final experience = event.linkedExperience;
+    if (experience == null) return;
+    setState(() {
+      _sheetMode = MapSheetMode.imported;
+      _importedCandidates.removeWhere(
+        (c) => c.originalURL != null && c.originalURL == experience.originalURL,
+      );
+      _importedCandidates.insert(0, experience);
+    });
+    _selectExperience(experience);
+  }
+
   void _onSharedUrlChanged() {
     _handleSharedUrlIfPresent();
   }
 
   @override
   void dispose() {
+    _importEventSub?.cancel();
     _sharedUrlNotifier?.removeListener(_onSharedUrlChanged);
     _sheetController.dispose();
     super.dispose();
@@ -329,33 +357,12 @@ class _MainMapScreenState extends State<MainMapScreen> {
   }
 
   Future<void> _openImportDialog({String? initialUrl}) async {
-    final importResult = await showDialog<InstagramImportResult>(
+    // Dialog closes immediately — import runs in background via SavedViewModel.
+    await showDialog<void>(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => ChangeNotifierProvider(
-        create: (_) => InstagramImportViewModel(),
-        child: ImportInstagramDialog(initialUrl: initialUrl),
-      ),
+      barrierDismissible: true,
+      builder: (context) => ImportInstagramDialog(initialUrl: initialUrl),
     );
-
-    if (importResult != null && mounted) {
-      final newExperience = importResult.experience;
-      try {
-        await RestaurantRepository().saveRestaurant(importResult.restaurant);
-      } catch (error) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Restaurant card sync failed: $error')),
-          );
-        }
-      }
-
-      setState(() {
-        _sheetMode = MapSheetMode.imported;
-        _importedCandidates.insert(0, newExperience);
-      });
-      await _selectExperience(newExperience);
-    }
   }
 
   void _onMapCreated(GoogleMapController controller) {
@@ -563,7 +570,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
       personalRating: restaurant.rating ?? 0,
       personalNote: restaurant.description,
       isDone: restaurant.visited,
-      createdTime: restaurant.createdTime,
+      createdTime: restaurant.updatedTime ?? restaurant.createdTime,
     );
   }
 

@@ -22,15 +22,27 @@ class RestaurantRepository {
       final restaurants = snapshot.docs
           .map((doc) => FoodCard.fromMap(doc.data(), doc.id))
           .toList();
+      // Sort by updatedTime so a new visit to an existing restaurant bubbles
+      // it to the top; fall back to createdTime for restaurants never touched.
       restaurants.sort((a, b) {
-        final aTime = a.createdTime;
-        final bTime = b.createdTime;
+        final aTime = a.updatedTime ?? a.createdTime;
+        final bTime = b.updatedTime ?? b.createdTime;
         if (aTime == null && bTime == null) return 0;
         if (aTime == null) return 1;
         if (bTime == null) return -1;
         return bTime.compareTo(aTime);
       });
       return restaurants;
+    });
+  }
+
+  /// Bumps a restaurant's updatedTime to now so it sorts to the top of
+  /// "recent" after a new experience is linked to it.
+  Future<void> touchRestaurant(String id) async {
+    final cleanId = id.trim();
+    if (cleanId.isEmpty) return;
+    await _collection.doc(cleanId).update({
+      'updatedTime': FieldValue.serverTimestamp(),
     });
   }
 

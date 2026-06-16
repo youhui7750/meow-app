@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:meow_food_butler/view_models/saved_view_model.dart';
 
 // Mode View Screens
 import 'package:meow_food_butler/views/map/main_map_screen.dart';
@@ -82,13 +86,115 @@ class AppNavigation {
 // PERSISTENT NAVIGATION SHELL WRAPPER
 // ==========================================================================
 
-class ScaffoldWithNestedNavigation extends StatelessWidget {
+class ScaffoldWithNestedNavigation extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
 
   const ScaffoldWithNestedNavigation({
     super.key,
     required this.navigationShell,
   });
+
+  @override
+  State<ScaffoldWithNestedNavigation> createState() =>
+      _ScaffoldWithNestedNavigationState();
+}
+
+class _ScaffoldWithNestedNavigationState
+    extends State<ScaffoldWithNestedNavigation> {
+  StreamSubscription<RestaurantImportEvent>? _importSub;
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _processingSnackBar;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _importSub?.cancel();
+    _importSub = context
+        .read<SavedViewModel>()
+        .importEvents
+        .listen(_handleImportEvent);
+  }
+
+  void _handleImportEvent(RestaurantImportEvent event) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (event.isStarted) {
+      _processingSnackBar?.close();
+      _processingSnackBar = messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(minutes: 2),
+          behavior: SnackBarBehavior.floating,
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '正在擷取「${event.restaurantName}」的餐廳資訊…',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else if (event.isCompleted) {
+      _processingSnackBar?.close();
+      _processingSnackBar = null;
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          content: Row(
+            children: [
+              const Icon(
+                Icons.check_circle,
+                size: 22,
+                color: Color(0xFF4CAF50),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '「${event.restaurantName}」已成功加入地圖！',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else if (event.isReviewCreated) {
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          content: Row(
+            children: [
+              const Icon(
+                Icons.edit_note,
+                size: 22,
+                color: Color(0xFF90CAF9),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '「${event.restaurantName}」用餐記錄已儲存',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
 
   void _onTap(int index) {
     // Pop the current branch's own Flutter navigator to root BEFORE switching.
@@ -100,17 +206,23 @@ class ScaffoldWithNestedNavigation extends StatelessWidget {
       _chatNavigatorKey,
       _savedNavigatorKey,
     ];
-    final currentKey = branchKeys[navigationShell.currentIndex];
+    final currentKey = branchKeys[widget.navigationShell.currentIndex];
     if (currentKey.currentState?.canPop() == true) {
       currentKey.currentState!.popUntil((route) => route.isFirst);
     }
-    navigationShell.goBranch(index, initialLocation: true);
+    widget.navigationShell.goBranch(index, initialLocation: true);
+  }
+
+  @override
+  void dispose() {
+    _importSub?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: navigationShell, // Houses the active sub-route stack directly
+      body: widget.navigationShell, // Houses the active sub-route stack directly
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -121,7 +233,7 @@ class ScaffoldWithNestedNavigation extends StatelessWidget {
           ],
         ),
         child: NavigationBar(
-          selectedIndex: navigationShell.currentIndex,
+          selectedIndex: widget.navigationShell.currentIndex,
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.map_outlined),
