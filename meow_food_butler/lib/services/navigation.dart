@@ -15,6 +15,7 @@ final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(de
 final GlobalKey<NavigatorState> _mapNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'mapChan');
 final GlobalKey<NavigatorState> _chatNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'chatChan');
 final GlobalKey<NavigatorState> _savedNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'savedChan');
+final ValueNotifier<int> _savedResetNotifier = ValueNotifier<int>(0);
 
 class AppNavigation {
   AppNavigation._();
@@ -71,6 +72,7 @@ class AppNavigation {
                 pageBuilder: (context, state) => NoTransitionPage(
                   child: SavedScreen(
                     initialSearchQuery: state.uri.queryParameters['q'],
+                    resetListenable: _savedResetNotifier,
                   ),
                 ),
               ),
@@ -206,9 +208,13 @@ class _ScaffoldWithNestedNavigationState
       _chatNavigatorKey,
       _savedNavigatorKey,
     ];
-    final currentKey = branchKeys[widget.navigationShell.currentIndex];
-    if (currentKey.currentState?.canPop() == true) {
-      currentKey.currentState!.popUntil((route) => route.isFirst);
+    for (final key in branchKeys) {
+      if (key.currentState?.canPop() == true) {
+        key.currentState!.popUntil((route) => route.isFirst);
+      }
+    }
+    if (index == 2) {
+      _savedResetNotifier.value++;
     }
     widget.navigationShell.goBranch(index, initialLocation: true);
   }

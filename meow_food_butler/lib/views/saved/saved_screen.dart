@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:meow_food_butler/models/experience_card.dart';
 import 'package:meow_food_butler/view_models/saved_view_model.dart';
 import 'package:meow_food_butler/views/saved/experience_detail_screen.dart';
@@ -8,8 +9,9 @@ import 'package:provider/provider.dart';
 
 class SavedScreen extends StatefulWidget {
   final String? initialSearchQuery;
+  final ValueListenable<int>? resetListenable;
 
-  const SavedScreen({super.key, this.initialSearchQuery});
+  const SavedScreen({super.key, this.initialSearchQuery, this.resetListenable});
 
   @override
   State<SavedScreen> createState() => _SavedScreenState();
@@ -29,14 +31,17 @@ class _SavedScreenState extends State<SavedScreen> {
       _query = widget.initialSearchQuery!.toLowerCase();
     }
     
-    _searchController.addListener(() {
-      setState(() => _query = _searchController.text.trim().toLowerCase());
-    });
+    _searchController.addListener(_handleSearchChanged);
+    widget.resetListenable?.addListener(_resetFilters);
   }
 
   @override
   void didUpdateWidget(covariant SavedScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.resetListenable != widget.resetListenable) {
+      oldWidget.resetListenable?.removeListener(_resetFilters);
+      widget.resetListenable?.addListener(_resetFilters);
+    }
     if (widget.initialSearchQuery != oldWidget.initialSearchQuery &&
         widget.initialSearchQuery != null) {
       _searchController.text = widget.initialSearchQuery!;
@@ -46,8 +51,27 @@ class _SavedScreenState extends State<SavedScreen> {
 
   @override
   void dispose() {
+    widget.resetListenable?.removeListener(_resetFilters);
+    _searchController.removeListener(_handleSearchChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _handleSearchChanged() {
+    if (!mounted) return;
+    setState(() => _query = _searchController.text.trim().toLowerCase());
+  }
+
+  void _resetFilters() {
+    if (!mounted) return;
+    _searchController.removeListener(_handleSearchChanged);
+    _searchController.clear();
+    _searchController.addListener(_handleSearchChanged);
+    setState(() {
+      _selectedRegion = null;
+      _selectedTags.clear();
+      _query = '';
+    });
   }
 
   void _openExperienceSheet(

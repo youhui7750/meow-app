@@ -9,6 +9,7 @@ import '../../models/experience_card.dart';
 import '../../services/business_hours_service.dart';
 import '../../view_models/saved_view_model.dart';
 
+import 'experience_entry_sheet.dart';
 import 'widgets/experience_photo.dart';
 
 class FoodCardDetail extends StatefulWidget {
@@ -43,6 +44,35 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
   void dispose() {
     _heroPageController.dispose();
     super.dispose();
+  }
+
+  void _openAddReviewSheet(BuildContext context) {
+    final viewModel = context.read<SavedViewModel>();
+    final card = widget.foodCard;
+    final prefilled = ExperienceCard(
+      placeTitle: card.primaryTitle,
+      placeId: card.id,
+      foodCardId: card.id,
+      placeAddress: card.formattedAddress,
+      latitude: card.location?.latitude,
+      longitude: card.location?.longitude,
+      googleMapsUrl: card.googleMapsUrl,
+      originalURL: card.originalURL,
+      personalTags: const [],
+      personalRating: 0,
+      isDone: true,
+    );
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => ExperienceEntrySheet(
+        initialExperience: prefilled,
+        savedPlaceSuggestions: viewModel.experiences,
+        onSave: (saved, photos) =>
+            viewModel.addExperience(saved, photos: photos),
+      ),
+    );
   }
 
   @override
@@ -82,6 +112,11 @@ class _FoodCardDetailState extends State<FoodCardDetail> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _openAddReviewSheet(context),
+        tooltip: '新增用餐記錄',
+        child: const Icon(Icons.rate_review),
+      ),
       body: Column(
         children: [
           _buildHeroImage(colorScheme, widget.experiences, currentExperiences),

@@ -290,7 +290,7 @@ class _MainMapScreenState extends State<MainMapScreen> {
 
   String? _selectedExperienceId;
   MapSheetMode _sheetMode = MapSheetMode.myPlaces;
-  MyPlacesSortMode _myPlacesSortMode = MyPlacesSortMode.distance;
+  MyPlacesSortMode _myPlacesSortMode = MyPlacesSortMode.recent;
 
   bool _canUseLocation = false;
   bool _isLocating = false;
@@ -913,11 +913,12 @@ class _MainMapScreenState extends State<MainMapScreen> {
               experience.latitude != null && experience.longitude != null,
         )
         .toList();
-    final importedExperiences = _mapExperiences(
-      [
+    final importedExperiences = _sortMyPlaces(
+      _mapExperiences([
         ..._importedCandidates,
         ...restaurantExperiences.where((experience) => !experience.isDone),
-      ],
+      ]),
+      restaurants,
     );
     final myPlaceExperiences = _sortMyPlaces(
       _mapExperiences([

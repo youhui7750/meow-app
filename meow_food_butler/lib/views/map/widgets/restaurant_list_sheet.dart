@@ -614,13 +614,11 @@ class _SheetHeader extends StatelessWidget {
               myPlacesCount: myPlacesCount,
               onChanged: onModeChanged,
             ),
-            if (mode == MapSheetMode.myPlaces) ...[
-              const SizedBox(height: 5),
-              _MyPlacesSortControl(
-                mode: myPlacesSortMode,
-                onChanged: onSortModeChanged,
-              ),
-            ],
+            const SizedBox(height: 5),
+            _MyPlacesSortControl(
+              mode: myPlacesSortMode,
+              onChanged: onSortModeChanged,
+            ),
           ],
         ),
       ),
